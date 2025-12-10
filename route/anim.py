@@ -99,7 +99,9 @@ def _create_animation_keyframes(
     
     print(f"[BLOSM] Animate {id_data.name}: path={data_path} start={start_frame}(adj={actual_start}) end={end_frame}")
 
-    # Set start value (0.0) and end value (1.0) using robust constraint access
+    # Set start/end values using robust constraint access
+    start_val = 0.01 if use_lead else 0.0
+    end_val = 1.01 if use_lead else 1.0
     try:
         # Robust constraint data path parsing and property access
         success = False
@@ -119,11 +121,11 @@ def _create_animation_keyframes(
                 
                 if target_constraint and hasattr(target_constraint, property_name):
                     # Set start value
-                    setattr(target_constraint, property_name, 0.0)
+                    setattr(target_constraint, property_name, start_val)
                     id_data.keyframe_insert(data_path=data_path, frame=actual_start)
 
                     # Set end value
-                    setattr(target_constraint, property_name, 1.0)
+                    setattr(target_constraint, property_name, end_val)
                     id_data.keyframe_insert(data_path=data_path, frame=end_frame)
                     success = True
                     print(f"[BLOSM] Created keyframes for constraint '{target_constraint.name}.{property_name}'")
@@ -138,11 +140,11 @@ def _create_animation_keyframes(
             # Handle non-constraint properties or fallback
             try:
                 # Set start value
-                id_data.path_resolve(data_path).set(0.0)
+                id_data.path_resolve(data_path).set(start_val)
                 id_data.keyframe_insert(data_path=data_path, frame=actual_start)
 
                 # Set end value
-                id_data.path_resolve(data_path).set(1.0)
+                id_data.path_resolve(data_path).set(end_val)
                 id_data.keyframe_insert(data_path=data_path, frame=end_frame)
                 success = True
             except Exception as prop_error:
@@ -817,5 +819,4 @@ __all__ = (
     'CAR_CONSTRAINT_NAME',
     'DAMPED_TRACK_NAME',
 )
-
 

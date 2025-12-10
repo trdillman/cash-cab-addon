@@ -385,6 +385,9 @@ def spline_to_polyline_world(obj, spline, samples_per_segment=CAR_TRAIL_SAMPLES_
         if count < 2:
             return []
 
+        if spline.type == 'POLY':
+            samples_per_segment = 1
+
         def point_world(p):
             co = p.co
             w = co.w if co.w != 0.0 else 1.0
@@ -491,6 +494,9 @@ def _resample_curve_to_polyline_world(
     """Return a resampled world-space polyline for the given curve without modifying it."""
     if obj is None or getattr(obj, "type", None) != "CURVE":
         return []
+    # If this is the already-resampled CAR_TRAIL at spec spacing, avoid double resampling
+    if getattr(obj, "name", "") == CAR_TRAIL_OBJECT_NAME and abs(spacing - CAR_TRAIL_RESAMPLE_SPACING) < 1e-6:
+        return _curve_world_polyline(obj, samples_per_segment=samples_per_segment)
     pts = []
     data = getattr(obj, "data", None)
     if data is None or getattr(data, "splines", None) is None:
@@ -562,6 +568,72 @@ def run_resample_on_car_trail():
         samples_per_segment=CAR_TRAIL_SAMPLES_PER_SEGMENT
     )
     print(f"Resampled curve '{obj.name}' with spacing {CAR_TRAIL_RESAMPLE_SPACING}")
+
+
+def _force_car_trail_polyline_from_route(scene: Optional[bpy.types.Scene]) -> bool:
+    """Rebuild CAR_TRAIL splines from the resampled ROUTE polyline to guarantee equivalence."""
+    route_obj = _find_route_curve(scene)
+    car_trail = bpy.data.objects.get(CAR_TRAIL_OBJECT_NAME)
+    if route_obj is None or car_trail is None or getattr(car_trail, "type", None) != "CURVE":
+        return False
+
+    pts_world = _resample_curve_to_polyline_world(
+        route_obj,
+        spacing=CAR_TRAIL_RESAMPLE_SPACING,
+        samples_per_segment=CAR_TRAIL_SAMPLES_PER_SEGMENT,
+    )
+    if len(pts_world) < 2:
+        return False
+
+    curve = car_trail.data
+    mw_inv = car_trail.matrix_world.inverted()
+    resampled_local = [mw_inv @ p for p in pts_world]
+
+    while curve.splines:
+        curve.splines.remove(curve.splines[0])
+
+    new_spline = curve.splines.new(type='POLY')
+    new_spline.use_cyclic_u = False
+    new_spline.points.add(len(resampled_local) - 1)
+    for i, p in enumerate(resampled_local):
+        new_spline.points[i].co = (p.x, p.y, p.z, 1.0)
+    return True
+
+
+def _ensure_car_trail_material(scene: Optional[bpy.types.Scene]) -> bool:
+    """Ensure CAR_TRAIL uses CAR_TRAIL_SHADER material only."""
+    car_trail = bpy.data.objects.get(CAR_TRAIL_OBJECT_NAME)
+    if car_trail is None or getattr(car_trail, "type", None) != "CURVE":
+        return False
+
+    mat = bpy.data.materials.get("CAR_TRAIL_SHADER")
+    if mat is None:
+        path = CAR_TRAIL_TEMPLATE_BLEND
+        try:
+            with bpy.data.libraries.load(str(path), link=False) as (data_from, data_to):
+                names = getattr(data_from, "materials", []) or []
+                if "CAR_TRAIL_SHADER" in names:
+                    data_to.materials = ["CAR_TRAIL_SHADER"]
+        except Exception as exc:
+            print(f"[BLOSM] WARN car trail material append failed: {exc}")
+        mat = bpy.data.materials.get("CAR_TRAIL_SHADER")
+
+    if mat is None:
+        print("[BLOSM] WARN CAR_TRAIL_SHADER material missing")
+        return False
+
+    try:
+        mats = car_trail.data.materials
+        if mats:
+            mats[0] = mat
+        else:
+            mats.append(mat)
+        while len(mats) > 1:
+            mats.pop(index=-1)
+        return True
+    except Exception as exc:
+        print(f"[BLOSM] WARN setting CAR_TRAIL material failed: {exc}")
+        return False
 
 
 def _build_car_trail_from_route(scene: Optional[bpy.types.Scene]) -> bpy.types.Object | None:
@@ -3423,6 +3495,12 @@ def run(ctx_or_scene: SceneLike = None) -> dict[str, object]:
     if sandbox is not None:
         result["sandbox"] = sandbox
 
+    try:
+        if _set_roads_z_scale(scene):
+            result["roads_scaled_z"] = True
+    except Exception as exc:
+        print(f"[FP][ROAD] WARN road scale adjust failed: {exc}")
+
     # Final safety: ensure CAR_TRAIL transform matches finalized route curve
     try:
         if _resync_car_trail_transform(scene):
@@ -3432,11 +3510,22 @@ def run(ctx_or_scene: SceneLike = None) -> dict[str, object]:
 
     # Resample CAR_TRAIL after final transform sync to keep world/local alignment stable
     try:
-        run_resample_on_car_trail()
-        result["car_trail_resampled_final"] = True
-        print("[FP][CAR] resample complete after final transform sync")
+        if _force_car_trail_polyline_from_route(scene):
+            result["car_trail_resampled_final"] = True
+            print("[FP][CAR] resample complete after final transform sync (from ROUTE)")
+        else:
+            run_resample_on_car_trail()
+            result["car_trail_resampled_final"] = True
+            print("[FP][CAR] resample complete after final transform sync")
     except Exception as exc:
         print(f"[BLOSM] WARN CAR_TRAIL resample post-sync failed: {exc}")
+
+    # Ensure CAR_TRAIL material
+    try:
+        if _ensure_car_trail_material(scene):
+            result["car_trail_material"] = "CAR_TRAIL_SHADER"
+    except Exception as exc:
+        print(f"[BLOSM] WARN CAR_TRAIL material assignment failed: {exc}")
 
     return result
 
@@ -3616,24 +3705,6 @@ def _run_tylers_sandbox(scene: Optional[bpy.types.Scene]) -> Optional[dict[str, 
                     pass
         result["car_cleanup"] = True
 
-        # Ensure taxi sign (if present) is parented to ASSET_CAR so it rides on the roof.
-        try:
-            car_obj = bpy.data.objects.get("ASSET_CAR")
-            taxi_obj = None
-            for obj in bpy.data.objects:
-                name_cf = (getattr(obj, "name", "") or "").casefold()
-                if "taxi" in name_cf:
-                    taxi_obj = obj
-                    break
-            if car_obj and taxi_obj and taxi_obj.parent is None:
-                try:
-                    taxi_obj.parent = car_obj
-                    taxi_obj.matrix_parent_inverse = car_obj.matrix_world.inverted()
-                    result["taxi_parented"] = True
-                except Exception:
-                    pass
-        except Exception as exc:
-            print(f"[BLOSM] Sandbox taxi sign parent fix failed: {exc}")
     except Exception as exc:
         print(f"[BLOSM] Sandbox car cleanup failed: {exc}")
 
@@ -3803,6 +3874,25 @@ def _run_tylers_sandbox(scene: Optional[bpy.types.Scene]) -> Optional[dict[str, 
     # --- END Tyler's Sandbox -------------------------------------------------
 
     return result or None
+
+
+def _set_roads_z_scale(scene: Optional[bpy.types.Scene]) -> bool:
+    """Force the ASSET_ROADS object to use a 0.1 Z-scale for stability."""
+    if scene is None:
+        return False
+    road_obj = bpy.data.objects.get("ASSET_ROADS")
+    if road_obj is None:
+        return False
+    try:
+        scale = list(getattr(road_obj, "scale", (1.0, 1.0, 1.0)))
+        if len(scale) < 3:
+            scale = [scale[0], scale[1], 1.0]
+        if abs(scale[2] - 0.1) > 1e-9:
+            scale[2] = 0.1
+            road_obj.scale = tuple(scale)
+        return True
+    except Exception:
+        return False
 
 
 

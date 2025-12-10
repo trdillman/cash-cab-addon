@@ -223,31 +223,6 @@ def import_assets(context: bpy.types.Context) -> Dict[str, Optional[str]]:
             car_collection.objects.link(car_obj)
         bpy.context.scene.collection.children.link(car_collection)
 
-        # Ensure taxi sign object (if present in the asset) is also imported and parented
-        # to the car so it appears on the roof.
-        sign_candidates = [
-            name for name in car_candidates
-            if name and "taxi" in name.casefold()
-        ]
-        sign_name = _prefer_name(sign_candidates) if sign_candidates else None
-        if sign_name:
-            # Append the taxi sign object explicitly from ASSET_CAR.blend
-            route_resolve.ensure_appended(CAR_BLEND_PATH, "objects", [sign_name])
-            sign_obj = bpy.data.objects.get(sign_name)
-            if sign_obj:
-                # Link sign into ASSET_CAR collection if not already there
-                if sign_obj.name not in car_collection.objects.keys():
-                    try:
-                        car_collection.objects.link(sign_obj)
-                    except RuntimeError:
-                        pass
-                # Parent sign to the main car object while preserving world transform
-                try:
-                    sign_obj.parent = car_obj
-                    sign_obj.matrix_parent_inverse = car_obj.matrix_world.inverted()
-                except Exception:
-                    pass
-
     if not car_collection:
         raise RouteAssetError('Car asset not available')
 

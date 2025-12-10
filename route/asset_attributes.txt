@@ -14,19 +14,9 @@
 # MOD[ModifierName]:property = 0
 
 
-[ASSET_BEAM]
-
 [CAR_TRAIL]
 
-[BUILDINGS_OLD]
-
-[BUILDINGS]
-
-[taxi sign.001]
-
-[ASSET_CAR]
-
-[CAR_LEAD]
+[ASSET_BEAM]
 
 [CN_TOWER]
 
@@ -38,15 +28,9 @@
 
 [ASSET_ROADS]
 
-[ASSET_ROADS.001]
-
-[ASSET_ROADS.002]
-
 [Start]
 
 [End]
-
-[ROUTE]
 
 [Lake_Mesh_Cutter]
 

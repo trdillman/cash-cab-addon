@@ -114,6 +114,12 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
             text="Apply Render Settings",
             icon='RENDER_STILL',
         )
+        preflight_box.operator(
+            "blosm.set_viewport_clip",
+            text="Set Clip Start/End",
+            icon='RESTRICT_VIEW_OFF',
+        )
+
 
         # RouteCam Controls (hidden by default – handled by separate addon)
         if False and addon.route_enable_routecam:

@@ -16,6 +16,7 @@ from .operators import (
     BLOSM_OT_RemoveWaypoint,
     BLOSM_OT_LevelsAdd,
     BLOSM_OT_LevelsDelete,
+    BLOSM_OT_SetViewportClip,
     BLOSM_OT_AssetsUpdateNotice,
 )
 from .cleanup_operator import BLOSM_OT_CleanAndClear
@@ -68,11 +69,13 @@ _classes = (
     BLOSM_OT_RemoveWaypoint,
     BLOSM_OT_LevelsAdd,
     BLOSM_OT_LevelsDelete,
+    BLOSM_OT_SetViewportClip,
     BLOSM_OT_AssetsUpdateNotice,
     BLOSM_OT_CleanAndClear,
     BLOSM_PT_RouteImport,
     BlosmProperties
 )
+
 
 
 def register():

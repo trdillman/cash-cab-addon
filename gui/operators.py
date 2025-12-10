@@ -80,7 +80,64 @@ class BLOSM_OT_LevelsDelete(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class BLOSM_OT_SetViewportClip(bpy.types.Operator):
+    """Set viewport clip start and end for all 3D viewports"""
+
+    bl_idname = "blosm.set_viewport_clip"
+    bl_label = "Set Viewport Clip"
+    bl_description = "Set clip start/end ranges for all 3D viewports to improve far-distance visibility"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    clip_start: bpy.props.FloatProperty(
+        name="Clip Start",
+        description="Viewport clip start distance",
+        default=1.0,
+        min=0.001,
+        soft_max=1000.0
+    )
+
+    clip_end: bpy.props.FloatProperty(
+        name="Clip End",
+        description="Viewport clip end distance",
+        default=1000000.0,
+        min=1.0,
+        soft_max=1000000.0
+    )
+
+    def execute(self, context):
+        update_count = 0
+
+        # Iterate through all screens and areas to find VIEW_3D spaces
+        for screen in bpy.data.screens:
+            for area in screen.areas:
+                if area.type == 'VIEW_3D':
+                    for space in area.spaces:
+                        if space.type == 'VIEW_3D':
+                            space.clip_start = self.clip_start
+                            space.clip_end = self.clip_end
+                            update_count += 1
+
+        # Fallback: if no VIEW_3D spaces were updated globally, try the current context
+        if update_count == 0:
+            if context.area and context.area.type == 'VIEW_3D':
+                if context.space_data and context.space_data.type == 'VIEW_3D':
+                    context.space_data.clip_start = self.clip_start
+                    context.space_data.clip_end = self.clip_end
+                    update_count = 1
+                    self.report({'INFO'}, f"Updated current viewport: clip_start={self.clip_start}, clip_end={self.clip_end}")
+                    return {'FINISHED'}
+
+            # No viewports found at all
+            self.report({'WARNING'}, "No 3D viewports found to update")
+            return {'CANCELLED'}
+
+        # Success: updated viewports globally
+        self.report({'INFO'}, f"Updated {update_count} viewport(s): clip_start={self.clip_start}, clip_end={self.clip_end}")
+        return {'FINISHED'}
+
+
 class BLOSM_OT_AssetsUpdateNotice(bpy.types.Operator):
+
     """Show a confirmation/notice about updated asset .blend files."""
 
     bl_idname = "blosm.assets_update_notice"
