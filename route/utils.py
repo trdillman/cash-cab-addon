@@ -1,0 +1,673 @@
+"""Route utilities for BLOSM route import."""
+
+from __future__ import annotations
+
+import json
+import gzip
+import xml.etree.ElementTree as ET
+from http.client import IncompleteRead
+import math
+import time
+import random
+from dataclasses import dataclass
+from typing import List, Sequence, Tuple
+from urllib import error, parse, request
+
+# Import configuration
+from .config import DEFAULT_CONFIG
+
+# Module-level constants from config (for backward compatibility)
+MIN_NOMINATIM_INTERVAL = DEFAULT_CONFIG.api.nominatim_min_interval_s
+EARTH_RADIUS_M = DEFAULT_CONFIG.geography.earth_radius_m
+_METERS_PER_DEGREE_LAT = DEFAULT_CONFIG.geography.meters_per_degree_lat
+_OVERPASS_TILE_MAX_M = DEFAULT_CONFIG.api.overpass_tile_max_m
+_OVERPASS_INTERVAL = DEFAULT_CONFIG.api.nominatim_min_interval_s
+_OVERPASS_TIMEOUT = DEFAULT_CONFIG.api.overpass_query_timeout
+_MAX_OVERPASS_ATTEMPTS = DEFAULT_CONFIG.api.overpass_max_retries
+_last_nominatim_request = 0.0
+
+
+class RouteServiceError(RuntimeError):
+    """Raised when external geocoding or routing fails."""
+
+
+@dataclass(frozen=True)
+class GeocodeResult:
+    address: str
+    lat: float
+    lon: float
+    display_name: str
+
+
+@dataclass(frozen=True)
+class RouteResult:
+    points: Sequence[Tuple[float, float]]
+    distance_m: float
+    duration_s: float
+
+
+@dataclass(frozen=True)
+class RouteContext:
+    start: GeocodeResult
+    end: GeocodeResult
+    route: RouteResult
+    bbox: Tuple[float, float, float, float]
+    padded_bbox: Tuple[float, float, float, float]
+    width_m: float
+    height_m: float
+    bbox_area_km2: float
+    tile_count: int
+    tiles: Sequence[Tuple[float, float, float, float]]
+
+
+def _throttle_nominatim():
+    global _last_nominatim_request
+    now = time.monotonic()
+    wait = MIN_NOMINATIM_INTERVAL - (now - _last_nominatim_request)
+    if wait > 0:
+        time.sleep(wait)
+    _last_nominatim_request = time.monotonic()
+
+
+def _request_json(url: str, user_agent: str, timeout: float = 30.0, throttle: bool = False) -> dict:
+    if throttle:
+        _throttle_nominatim()
+    headers = {"User-Agent": user_agent or "BLOSM Route Import"}
+    req = request.Request(url, headers=headers)
+    try:
+        with request.urlopen(req, timeout=timeout) as resp:
+            status = getattr(resp, "status", 200)
+            if status != 200:
+                raise RouteServiceError(f"HTTP {status} from {url}")
+            payload = resp.read().decode("utf-8")
+    except error.URLError as exc:  # includes HTTPError
+        raise RouteServiceError(f"Request error for {url}: {exc}") from exc
+    try:
+        return json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise RouteServiceError("Unable to decode response JSON") from exc
+
+
+def geocode(address: str, user_agent: str) -> GeocodeResult:
+    """Geocode a human-readable address via Nominatim.
+
+    Raises RouteServiceError with a user-friendly message when no results are
+    returned or the response is malformed. The original input address is
+    included so the UI can show actionable guidance.
+    """
+    if not address or not address.strip():
+        raise RouteServiceError("Address is empty. Please enter an address.")
+    query = parse.urlencode({
+        "q": address,
+        "format": "json",
+        "limit": 1,
+        "countrycodes": DEFAULT_CONFIG.api.nominatim_country_codes
+    })
+    url = f"https://nominatim.openstreetmap.org/search?{query}"
+    data = _request_json(url, user_agent, throttle=True)
+    if not data:
+        # Explicit, user-facing guidance for bad/unknown addresses
+        raise RouteServiceError(
+            f"Address not found: \"{address}\". Please check the spelling or try a nearby intersection."
+        )
+    entry = data[0]
+    try:
+        lat = float(entry["lat"])
+        lon = float(entry["lon"])
+    except (KeyError, ValueError) as exc:
+        raise RouteServiceError(
+            f"Could not read geocoding result for \"{address}\". Please adjust and try again."
+        ) from exc
+    return GeocodeResult(address=address, lat=lat, lon=lon, display_name=entry.get("display_name", address))
+
+
+def decode_polyline(value: str, precision: int = 5) -> List[Tuple[float, float]]:
+    if not value:
+        return []
+    index = 0
+    lat = 0
+    lon = 0
+    coordinates: List[Tuple[float, float]] = []
+    factor = 10 ** precision
+
+    length = len(value)
+    while index < length:
+        result = 0
+        shift = 0
+        while True:
+            if index >= length:
+                raise RouteServiceError("Malformed polyline data")
+            b = ord(value[index]) - 63
+            index += 1
+            result |= (b & 0x1F) << shift
+            shift += 5
+            if b < 0x20:
+                break
+        dlat = ~(result >> 1) if result & 1 else (result >> 1)
+        lat += dlat
+
+        result = 0
+        shift = 0
+        while True:
+            if index >= length:
+                raise RouteServiceError("Malformed polyline data")
+            b = ord(value[index]) - 63
+            index += 1
+            result |= (b & 0x1F) << shift
+            shift += 5
+            if b < 0x20:
+                break
+        dlon = ~(result >> 1) if result & 1 else (result >> 1)
+        lon += dlon
+
+        coordinates.append((lat / factor, lon / factor))
+
+    return coordinates
+
+
+def fetch_route(start: GeocodeResult, end: GeocodeResult, user_agent: str, waypoints: List[GeocodeResult] = None) -> RouteResult:
+    """Fetch driving route from start to end, optionally passing through waypoints"""
+    # Build coordinate string: start;waypoint1;waypoint2;...;end
+    coord_list = [f"{start.lon},{start.lat}"]
+    if waypoints:
+        for wp in waypoints:
+            coord_list.append(f"{wp.lon},{wp.lat}")
+    coord_list.append(f"{end.lon},{end.lat}")
+    coords = ";".join(coord_list)
+
+    url = f"{DEFAULT_CONFIG.api.osrm_base_url}/route/v1/driving/{coords}?overview=full&geometries=polyline"
+    data = _request_json(url, user_agent, throttle=False)
+    if data.get("code") != "Ok" or not data.get("routes"):
+        # Provide clear guidance when routing fails between points
+        raise RouteServiceError(
+            f"Could not find driving directions between \"{start.address}\" and \"{end.address}\". "
+            f"Please check address spelling or try adjusting the locations."
+        )
+    route_data = data["routes"][0]
+    geometry = route_data.get("geometry")
+    if not geometry:
+        raise RouteServiceError(
+            "Routing service returned no geometry. Please try again or adjust addresses."
+        )
+    points = decode_polyline(geometry)
+    if not points:
+        raise RouteServiceError(
+            "Route geometry is empty. Please try again or adjust addresses."
+        )
+    distance = float(route_data.get("distance", 0.0))
+    duration = float(route_data.get("duration", 0.0))
+    return RouteResult(points=points, distance_m=distance, duration_s=duration)
+
+
+def compute_bbox(points: Sequence[Tuple[float, float]]) -> Tuple[float, float, float, float]:
+    lats = [p[0] for p in points]
+    lons = [p[1] for p in points]
+    south = min(lats)
+    north = max(lats)
+    west = min(lons)
+    east = max(lons)
+    return south, west, north, east
+
+
+def pad_bbox(bbox: Tuple[float, float, float, float], padding_m: float) -> Tuple[float, float, float, float]:
+    south, west, north, east = bbox
+    if padding_m <= 0:
+        return south, west, north, east
+    mid_lat = (south + north) / 2.0
+    lat_pad = padding_m / _METERS_PER_DEGREE_LAT
+    lon_scale = math.cos(math.radians(mid_lat))
+    if abs(lon_scale) < 1e-6:
+        lon_pad = 0.0
+    else:
+        lon_pad = padding_m / (_METERS_PER_DEGREE_LAT * lon_scale)
+    south = max(-90.0, south - lat_pad)
+    north = min(90.0, north + lat_pad)
+    west = max(-180.0, west - lon_pad)
+    east = min(180.0, east + lon_pad)
+    return south, west, north, east
+
+
+def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return EARTH_RADIUS_M * c
+
+
+def bbox_size(bbox: Tuple[float, float, float, float]) -> Tuple[float, float]:
+    south, west, north, east = bbox
+    mid_lat = (south + north) / 2.0
+    mid_lon = (west + east) / 2.0
+    width = haversine_m(mid_lat, west, mid_lat, east)
+    height = haversine_m(south, mid_lon, north, mid_lon)
+    return width, height
+
+
+def prepare_route(start_address: str, end_address: str, padding_m: float, user_agent: str, waypoint_addresses: List[str] = None) -> RouteContext:
+    """Prepare route context with optional waypoints.
+
+    Wraps geocoding with explicit error messages so the operator can surface
+    clear warnings (e.g., which address failed) instead of failing silently.
+    """
+    # Geocode start/end with targeted messages
+    try:
+        start = geocode(start_address, user_agent)
+    except RouteServiceError as exc:
+        raise RouteServiceError(
+            f"Start address not found: \"{start_address}\". Please check the spelling."
+        ) from exc
+    try:
+        end = geocode(end_address, user_agent)
+    except RouteServiceError as exc:
+        raise RouteServiceError(
+            f"End address not found: \"{end_address}\". Please check the spelling."
+        ) from exc
+
+    # Geocode waypoints if provided
+    waypoints = []
+    if waypoint_addresses:
+        for wp_address in waypoint_addresses:
+            if wp_address and wp_address.strip():  # Skip empty addresses
+                try:
+                    waypoints.append(geocode(wp_address.strip(), user_agent))
+                except RouteServiceError as exc:
+                    raise RouteServiceError(
+                        f"Waypoint address not found: \"{wp_address}\". Please check the spelling."
+                    ) from exc
+
+    # Fetch route with waypoints
+    route = fetch_route(start, end, user_agent, waypoints=waypoints if waypoints else None)
+
+    bbox = compute_bbox(route.points)
+    padded_bbox = pad_bbox(bbox, padding_m)
+    width_m, height_m = bbox_size(padded_bbox)
+    bbox_area_km2 = (width_m * height_m) / 1_000_000.0
+    tiles = _tile_bbox(*padded_bbox)
+    tile_count = len(tiles)
+    return RouteContext(
+        start=start,
+        end=end,
+        route=route,
+        bbox=bbox,
+        padded_bbox=padded_bbox,
+        width_m=width_m,
+        height_m=height_m,
+        bbox_area_km2=bbox_area_km2,
+        tile_count=tile_count,
+        tiles=tuple(tiles),
+    )
+
+
+
+
+
+
+
+
+def _meters_to_lat_delta(meters: float) -> float:
+    return meters / _METERS_PER_DEGREE_LAT
+
+
+def _meters_to_lon_delta(meters: float, latitude: float) -> float:
+    scale = math.cos(math.radians(latitude))
+    if abs(scale) < 1e-6:
+        return 360.0
+    return meters / (_METERS_PER_DEGREE_LAT * scale)
+
+
+def _tile_bbox(south: float, west: float, north: float, east: float) -> List[Tuple[float, float, float, float]]:
+    tiles: List[Tuple[float, float, float, float]] = []
+    lat_step = _meters_to_lat_delta(_OVERPASS_TILE_MAX_M)
+    lat = south
+    while lat < north - 1e-9:
+        next_lat = min(north, lat + lat_step)
+        mid_lat = (lat + next_lat) * 0.5
+        lon_step = _meters_to_lon_delta(_OVERPASS_TILE_MAX_M, mid_lat)
+        lon = west
+        row_added = False
+        while lon < east - 1e-9:
+            next_lon = min(east, lon + lon_step)
+            tiles.append((lat, lon, next_lat, next_lon))
+            lon = next_lon
+            row_added = True
+        if not row_added:
+            tiles.append((lat, west, next_lat, east))
+        lat = next_lat
+    if not tiles:
+        tiles.append((south, west, north, east))
+    return tiles
+
+
+
+class OverpassFetcher:
+    """Fetches OSM data for roads/buildings using Overpass with tiling and retries."""
+
+    # Use servers from configuration
+    SERVERS = DEFAULT_CONFIG.api.overpass_servers
+
+    def __init__(
+        self,
+        user_agent: str,
+        include_roads: bool,
+        include_buildings: bool,
+        include_water: bool = False,
+        *,
+        min_interval_ms: int = 1000,
+        timeout_s: float = 30.0,
+        max_retries: int = 3,
+        logger=None,
+        progress=None,
+        store_tiles: bool = False,
+    ):
+        if not include_roads and not include_buildings and not include_water:
+            raise RouteServiceError("No layers selected for Overpass fetch")
+        self.user_agent = (user_agent or "BLOSM Route Import").strip() or "BLOSM Route Import"
+        self.include_roads = include_roads
+        self.include_buildings = include_buildings
+        self.include_water = include_water
+        self._logger = logger
+        self._progress = progress
+        self._store_tiles = bool(store_tiles)
+        self._tile_payloads: List[bytes] = []
+        self._tile_bboxes: List[Tuple[float, float, float, float]] = []
+        self._server_index = 0
+        self._last_request = 0.0
+        self._min_interval_s = max(0.0, min_interval_ms / 1000.0)
+        self._timeout_s = max(1.0, float(timeout_s))
+        self._max_retries = max(0, int(max_retries))
+        self._tile_times: List[float] = []
+        self._total_start = 0.0
+        self._total_elapsed_s = 0.0
+        self._cache_ready = False
+
+    @property
+    def average_tile_ms(self) -> float:
+        return sum(self._tile_times) / len(self._tile_times) if self._tile_times else 0.0
+
+    @property
+    def total_elapsed_s(self) -> float:
+        return self._total_elapsed_s
+
+    def _sleep_until_ready(self) -> None:
+        if self._min_interval_s <= 0:
+            return
+        now = time.monotonic()
+        wait = self._min_interval_s - (now - self._last_request)
+        if wait > 0:
+            time.sleep(wait)
+
+    def _log(self, message: str) -> None:
+        if self._logger:
+            self._logger(message)
+        else:
+            print(f"[BLOSM Route] {message}")
+
+    def _emit_progress(self, message: str) -> None:
+        if self._logger:
+            try:
+                self._logger(message)
+            except Exception:
+                print(f"[BLOSM Route] {message}")
+        print(f"[BLOSM Route] {message}")
+
+    def write_tiles(self, filepath: str, tiles) -> None:
+        """Write OSM XML for an explicit list of tiles.
+
+        This helper is used by the main route import as well as the
+        Extend City operator so callers can control exactly which tiles
+        are fetched (for example, only the tiles that extend the current
+        city instead of the full bbox again).
+        """
+        total_tiles = len(tiles)
+        if self._store_tiles:
+            self._tile_payloads = []
+            self._tile_bboxes = []
+        if self._progress:
+            try:
+                self._progress.begin(total_tiles)
+            except Exception:
+                pass
+        self._log(f"Overpass fetching {len(tiles)} tile(s)")
+        root = ET.Element("osm", attrib={"version": "0.6", "generator": "BLOSM Route"})
+        if tiles:
+            south = min(t[0] for t in tiles)
+            west = min(t[1] for t in tiles)
+            north = max(t[2] for t in tiles)
+            east = max(t[3] for t in tiles)
+        else:
+            south = west = north = east = 0.0
+        ET.SubElement(root, "bounds", attrib={
+            "minlat": f"{south:.7f}",
+            "minlon": f"{west:.7f}",
+            "maxlat": f"{north:.7f}",
+            "maxlon": f"{east:.7f}",
+        })
+        seen = {
+            "node": set(),
+            "way": set(),
+            "relation": set(),
+        }
+        totals = {"node": 0, "way": 0, "relation": 0}
+        self._tile_times = []
+        self._total_start = time.perf_counter()
+        try:
+            for index, tile in enumerate(tiles, 1):
+                tile_start = time.perf_counter()
+                retries = 0
+                while True:
+                    try:
+                        xml_bytes = self._fetch_tile(tile)
+                        break
+                    except RouteServiceError as exc:
+                        retries += 1
+                        if retries > self._max_retries:
+                            raise
+                        backoff = min(5.0, 2 ** (retries - 1)) + random.uniform(0.0, 0.25)
+                        self._log(f"Retry {retries}/{self._max_retries} for tile {index}: {exc} (waiting {backoff:.2f}s)")
+                        time.sleep(backoff)
+                added = self._merge_xml(root, seen, xml_bytes)
+                for key, value in added.items():
+                    totals[key] += value
+                tile_ms = (time.perf_counter() - tile_start) * 1000.0
+                self._tile_times.append(tile_ms)
+                elapsed = time.perf_counter() - self._total_start
+                avg_ms = self.average_tile_ms or tile_ms
+                percent = (index / len(tiles)) * 100.0 if tiles else 0.0
+                self._emit_progress(
+                    f"Tiles {index}/{len(tiles)} ({percent:.0f}%), last={tile_ms:.0f} ms, avg={avg_ms:.0f} ms, elapsed={elapsed:.1f} s, retries={retries}"
+                )
+                if self._store_tiles:
+                    self._tile_payloads.append(xml_bytes)
+                    self._tile_bboxes.append(tile)
+                if self._progress:
+                    try:
+                        self._progress.update(index, total_tiles)
+                    except Exception:
+                        pass
+        finally:
+            if self._progress:
+                try:
+                    self._progress.end()
+                except Exception:
+                    pass
+        self._total_elapsed_s = time.perf_counter() - self._total_start
+        ET.ElementTree(root).write(filepath, encoding="utf-8", xml_declaration=True)
+        self._log(
+            f"Overpass totals: nodes {totals['node']}, ways {totals['way']}, relations {totals['relation']}"
+        )
+        self._cache_ready = True
+
+    def write(self, filepath: str, south: float, west: float, north: float, east: float) -> None:
+        """Backward-compatible entry point that tiles a bbox.
+
+        Existing callers pass a geographic bbox; internally we derive the tile
+        list and forward to :meth:`write_tiles` so that other callers (like the
+        Extend City operator) can supply their own tile sets.
+        """
+        tiles = _tile_bbox(south, west, north, east)
+        self.write_tiles(filepath, tiles)
+
+    def _fetch_tile(self, tile: Tuple[float, float, float, float]) -> bytes:
+        south, west, north, east = tile
+        query = self._build_query(south, west, north, east)
+        attempts = 0
+        total_servers = len(self.SERVERS)
+        while True:
+            server = self.SERVERS[self._server_index]
+            try:
+                self._sleep_until_ready()
+                data = self._request_overpass(server, query)
+                self._log(
+                    f"Fetched tile lat {south:.6f}-{north:.6f}, lon {west:.6f}-{east:.6f} from {server}"
+                )
+                return data
+            except RouteServiceError as exc:
+                attempts += 1
+                self._server_index = (self._server_index + 1) % total_servers
+                if attempts > self._max_retries:
+                    raise RouteServiceError(f"Overpass request failed after retries: {exc}")
+                backoff = min(5.0, 2 ** (attempts - 1)) + random.uniform(0.0, 0.25)
+                self._log(f"Switching endpoint (attempt {attempts}/{self._max_retries}) due to: {exc}. Waiting {backoff:.2f}s")
+                time.sleep(backoff)
+
+    def _request_overpass(self, server: str, query: str) -> bytes:
+        url = f"{server}/api/interpreter"
+        self._last_request = time.monotonic()
+        req = request.Request(
+            url,
+            data=query.encode("utf-8"),
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
+                "User-Agent": self.user_agent,
+            },
+        )
+        try:
+            with request.urlopen(req, timeout=self._timeout_s) as resp:
+                raw = resp.read()
+                headers = resp.headers if resp.headers else {}
+                encoding = headers.get("Content-Encoding")
+                if encoding == "gzip":
+                    raw = gzip.decompress(raw)
+                content_length = headers.get("Content-Length")
+                if content_length and len(raw) < int(content_length):
+                    raise RouteServiceError("Overpass response truncated")
+        except error.HTTPError as exc:
+            retry_after = exc.headers.get("Retry-After") if exc.headers else None
+            if retry_after:
+                try:
+                    wait_time = float(retry_after)
+                    self._log(f"Retry-After received: waiting {wait_time:.2f}s")
+                    time.sleep(min(wait_time, 10.0))
+                except ValueError:
+                    pass
+            raise RouteServiceError(f"Overpass HTTP error {exc.code}") from exc
+        except IncompleteRead as exc:
+            raise RouteServiceError("Overpass incomplete read") from exc
+        except error.URLError as exc:
+            raise RouteServiceError(f"Overpass connection error: {exc}") from exc
+        finally:
+            self._last_request = time.monotonic()
+        stripped = raw.strip()
+        if not stripped.startswith(b"<?xml") and not stripped.startswith(b"<osm"):
+            raise RouteServiceError("Overpass returned unexpected payload")
+        if b"</osm>" not in stripped:
+            raise RouteServiceError("Overpass response incomplete (missing </osm>)")
+        return raw
+
+    def _merge_xml(self, root: ET.Element, seen, xml_bytes: bytes) -> dict:
+        try:
+            doc = ET.fromstring(xml_bytes)
+        except ET.ParseError as exc:
+            raise RouteServiceError(f"Unable to parse Overpass XML: {exc}") from exc
+        if doc.tag != "osm":
+            raise RouteServiceError("Unexpected Overpass root element")
+        added = {"node": 0, "way": 0, "relation": 0}
+        for child in doc:
+            tag = child.tag
+            if tag not in seen:
+                continue
+            element_id = child.get("id")
+            if not element_id:
+                continue
+            key = (tag, element_id)
+            if key in seen[tag]:
+                continue
+            seen[tag].add(key)
+            child.tail = None
+            root.append(child)
+            added[tag] += 1
+        return added
+
+    def get_cached_tiles(self):
+        if not self._store_tiles or not self._tile_payloads:
+            return []
+        return list(zip(self._tile_bboxes, self._tile_payloads))
+
+    def _build_query(self, south: float, west: float, north: float, east: float) -> str:
+        parts = []
+        if self.include_buildings:
+            parts.append(f'way["building"]({south},{west},{north},{east});')
+            parts.append(f'relation["building"]({south},{west},{north},{east});')
+        if self.include_roads:
+            parts.append(f'way["highway"]({south},{west},{north},{east});')
+        if self.include_water:
+            # Smart water import: compact bbox for nearby features, expanded bbox for large water relations
+
+            # Nearby water features in main (compact) bbox - 500m padding area
+            parts.append(f'way["natural"="water"]({south},{west},{north},{east});')
+            parts.append(f'way["waterway"="river"]({south},{west},{north},{east});')
+            parts.append(f'way["waterway"="stream"]({south},{west},{north},{east});')
+            parts.append(f'way["waterway"="canal"]({south},{west},{north},{east});')
+            parts.append(f'way["waterway"="creek"]({south},{west},{north},{east});')
+            parts.append(f'way["waterway"="riverbank"]({south},{west},{north},{east});')
+            parts.append(f'way["landuse"="reservoir"]({south},{west},{north},{east});')
+            parts.append(f'way["landuse"="water"]({south},{west},{north},{east});')
+
+            # Large water bodies (Great Lakes) with expanded bbox - 1500m expansion for relations only
+            # This captures Lake Ontario and similar large lakes without massive bbox expansion
+            lat_expansion = 1500.0 / 111320.0  # Convert 1500m to degrees latitude
+            lon_expansion = 1500.0 / (111320.0 * 0.965)  # Convert 1500m to degrees longitude (Toronto latitude)
+
+            expanded_south = south - lat_expansion
+            expanded_west = west - lon_expansion
+            expanded_north = north + lat_expansion
+            expanded_east = east + lon_expansion
+
+            # Add large water body relation queries in expanded bbox only
+            parts.append(f'relation["natural"="water"]({expanded_south},{expanded_west},{expanded_north},{expanded_east});')
+            parts.append(f'way["natural"="coastline"]({expanded_south},{expanded_west},{expanded_north},{expanded_east});')
+
+            # Great Lakes specific queries in expanded bbox
+            parts.append(f'relation["natural"="water"]["name"~"Lake.*Ontario|Lake.*Erie|Lake.*Huron|Lake.*Superior|Lake.*Michigan"]({expanded_south},{expanded_west},{expanded_north},{expanded_east});')
+            parts.append(f'relation["name"="Lake Ontario"]({expanded_south},{expanded_west},{expanded_north},{expanded_east});')
+            parts.append(f'relation["name"="Lake Erie"]({expanded_south},{expanded_west},{expanded_north},{expanded_east});')
+            parts.append(f'relation["landuse"="water"]({expanded_south},{expanded_west},{expanded_north},{expanded_east});')
+            parts.append(f'relation["place"="sea"]({south},{west},{north},{east});')
+            parts.append(f'relation["place"="ocean"]({south},{west},{north},{east});')
+
+            # Toronto Islands specific queries in expanded bbox
+            # Support both generic island queries and Toronto Islands specific patterns
+            parts.append(f'relation["place"="island"]({expanded_south},{expanded_west},{expanded_north},{expanded_east});')
+            parts.append(f'way["place"="island"]({expanded_south},{expanded_west},{expanded_north},{expanded_east});')
+            parts.append(f'relation["name"~"Toronto.*Island|Island.*Toronto|Toronto.*Islands|Islands.*Toronto"]({expanded_south},{expanded_west},{expanded_north},{expanded_east});')
+            parts.append(f'way["name"~"Toronto.*Island|Island.*Toronto|Toronto.*Islands|Islands.*Toronto"]({expanded_south},{expanded_west},{expanded_north},{expanded_east});')
+            parts.append(f'relation["name"~"Centre.*Island|Ward.*Island|Algonquin.*Island|Muggs.*Island|South.*Island"]({expanded_south},{expanded_west},{expanded_north},{expanded_east});')
+            parts.append(f'way["name"~"Centre.*Island|Ward.*Island|Algonquin.*Island|Muggs.*Island|South.*Island"]({expanded_south},{expanded_west},{expanded_north},{expanded_east});')
+            parts.append(f'relation["name"="Toronto Islands"]({expanded_south},{expanded_west},{expanded_north},{expanded_east});')
+            parts.append(f'way["name"="Toronto Islands"]({expanded_south},{expanded_west},{expanded_north},{expanded_east});')
+
+            # Generic island queries for broader island detection
+            parts.append(f'relation["place"="island"]["natural"~"land|ground|grass|forest|wood|scrub|wetland|sand|rock|stone"]({expanded_south},{expanded_west},{expanded_north},{expanded_east});')
+            parts.append(f'way["place"="island"]["natural"~"land|ground|grass|forest|wood|scrub|wetland|sand|rock|stone"]({expanded_south},{expanded_west},{expanded_north},{expanded_east});')
+        body = "\n        ".join(parts)
+        return (
+            "[out:xml][timeout:180];\n"
+            "(\n"
+            f"        {body}\n"
+            ");\n"
+            "(._;>;);\n"
+            "out body;\n"
+        )

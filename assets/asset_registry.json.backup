@@ -1,0 +1,184 @@
+{
+  "version": "1.0.0",
+  "assets": [
+    {
+      "id": "default_car",
+      "name": "Default Car",
+      "type": "car",
+      "blend_file": "ASSET_CAR.blend",
+      "datablock_name": "ASSET_CAR",
+      "default_transform": {
+        "location": [
+          0.0,
+          0.0,
+          1.5
+        ],
+        "rotation_euler": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          20.0,
+          20.0,
+          20.0
+        ]
+      },
+      "category": "vehicles",
+      "description": "Default car asset for route animation",
+      "version": "1.0.0",
+      "tags": [
+        "default",
+        "vehicle",
+        "animated"
+      ],
+      "collection_name": "BLOSM_Assets",
+      "hide_viewport": false,
+      "hide_render": false,
+      "properties": {
+        "rotation_mode": "XYZ",
+        "follow_curve": true
+      }
+    },
+    {
+      "id": "route_material",
+      "name": "Route Material",
+      "type": "material",
+      "blend_file": "ASSET_ROUTE.blend",
+      "datablock_name": "RouteLine",
+      "default_transform": {
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation_euler": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "category": "materials",
+      "description": "Material for route visualization",
+      "version": "1.0.0",
+      "tags": [
+        "route",
+        "material"
+      ],
+      "collection_name": null,
+      "hide_viewport": false,
+      "hide_render": false,
+      "properties": {}
+    },
+    {
+      "id": "route_nodegroup",
+      "name": "Route Node Group",
+      "type": "node_group",
+      "blend_file": "ASSET_ROUTE.blend",
+      "datablock_name": "ASSET_RouteTrace",
+      "default_transform": {
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation_euler": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "category": "node_groups",
+      "description": "Geometry nodes for route generation",
+      "version": "1.0.0",
+      "tags": [
+        "route",
+        "geometry_nodes"
+      ],
+      "collection_name": null,
+      "hide_viewport": false,
+      "hide_render": false,
+      "properties": {}
+    },
+    {
+      "id": "building_nodegroup",
+      "name": "Building Node Group",
+      "type": "node_group",
+      "blend_file": "ASSET_BUILDINGS.blend",
+      "datablock_name": "ASSET_BuildingGeoNodes",
+      "default_transform": {
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation_euler": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "category": "node_groups",
+      "description": "Geometry nodes for building generation",
+      "version": "1.0.0",
+      "tags": [
+        "building",
+        "geometry_nodes"
+      ],
+      "collection_name": null,
+      "hide_viewport": false,
+      "hide_render": false,
+      "properties": {}
+    },
+    {
+      "id": "building_material",
+      "name": "Building Material",
+      "type": "material",
+      "blend_file": "ASSET_BUILDINGS.blend",
+      "datablock_name": "ASSET_BuildingsMaterial",
+      "default_transform": {
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation_euler": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "category": "materials",
+      "description": "Material for building visualization",
+      "version": "1.0.0",
+      "tags": [
+        "building",
+        "material"
+      ],
+      "collection_name": null,
+      "hide_viewport": false,
+      "hide_render": false,
+      "properties": {}
+    }
+  ]
+}

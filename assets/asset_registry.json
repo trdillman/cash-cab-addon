@@ -1,0 +1,386 @@
+{
+  "version": "1.0.0",
+  "assets": [
+    {
+      "id": "asset_markers",
+      "name": "Asset Markers",
+      "type": "collection",
+      "blend_file": "ASSET_MARKERS.blend",
+      "datablock_name": "ASSET_MARKERS",
+      "default_transform": {
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation_euler": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "category": "effects",
+      "description": "Route markers collection with MARKER_START and MARKER_END objects for route positioning",
+      "version": "1.0.0",
+      "tags": [
+        "markers",
+        "route",
+        "start",
+        "end",
+        "positioning"
+      ],
+      "collection_name": "ASSET_MARKERS",
+      "hide_viewport": false,
+      "hide_render": false,
+      "properties": {
+        "contains": ["MARKER_START", "MARKER_END"],
+        "object_types": ["MESH", "MESH"],
+        "positioning": "route_start_end"
+      }
+    },
+    {
+      "id": "default_car",
+      "name": "Default Car",
+      "type": "collection",
+      "blend_file": "ASSET_CAR.blend",
+      "datablock_name": "ASSET_CAR",
+      "default_transform": {
+        "location": [
+          0.0,
+          0.0,
+          1.5
+        ],
+        "rotation_euler": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          20.0,
+          20.0,
+          20.0
+        ]
+      },
+      "category": "vehicles",
+      "description": "Default car asset for route animation",
+      "version": "1.0.0",
+      "tags": [
+        "default",
+        "vehicle",
+        "animated"
+      ],
+      "collection_name": "BLOSM_Assets",
+      "hide_viewport": false,
+      "hide_render": false,
+      "properties": {
+        "rotation_mode": "XYZ",
+        "follow_curve": true
+      }
+    },
+    {
+      "id": "route_material",
+      "name": "Route Material",
+      "type": "material",
+      "blend_file": "ASSET_ROUTE.blend",
+      "datablock_name": "RouteLine",
+      "default_transform": {
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation_euler": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "category": "materials",
+      "description": "Material for route visualization",
+      "version": "1.0.0",
+      "tags": [
+        "route",
+        "material"
+      ],
+      "collection_name": null,
+      "hide_viewport": false,
+      "hide_render": false,
+      "properties": {}
+    },
+    {
+      "id": "route_nodegroup",
+      "name": "Route Node Group",
+      "type": "node_group",
+      "blend_file": "ASSET_ROUTE.blend",
+      "datablock_name": "ASSET_RouteTrace",
+      "default_transform": {
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation_euler": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "category": "node_groups",
+      "description": "Geometry nodes for route generation",
+      "version": "1.0.0",
+      "tags": [
+        "route",
+        "geometry_nodes"
+      ],
+      "collection_name": null,
+      "hide_viewport": false,
+      "hide_render": false,
+      "properties": {}
+    },
+    {
+      "id": "building_nodegroup",
+      "name": "Building Node Group",
+      "type": "node_group",
+      "blend_file": "ASSET_BUILDINGS.blend",
+      "datablock_name": "ASSET_BuildingGeoNodes",
+      "default_transform": {
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation_euler": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "category": "node_groups",
+      "description": "Geometry nodes for building generation",
+      "version": "1.0.0",
+      "tags": [
+        "building",
+        "geometry_nodes"
+      ],
+      "collection_name": null,
+      "hide_viewport": false,
+      "hide_render": false,
+      "properties": {}
+    },
+    {
+      "id": "building_template",
+      "name": "Building Template",
+      "type": "building",
+      "blend_file": "ASSET_BUILDINGS.blend",
+      "datablock_name": "BUILDINGS_GEO",
+      "default_transform": {
+        "location": [0.0, 0.0, 0.0],
+        "rotation_euler": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      },
+      "category": "objects",
+      "description": "Template object with pre-configured Geometry Nodes modifier settings",
+      "version": "1.0.0",
+      "tags": ["building", "template"],
+      "collection_name": null,
+      "hide_viewport": true,
+      "hide_render": true,
+      "properties": {}
+    },
+    {
+      "id": "asset_beam",
+      "name": "Asset Beam",
+      "type": "light",
+      "blend_file": "ASSET_BEAM.blend",
+      "datablock_name": "ASSET_BEAM",
+      "default_transform": {
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation_euler": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "category": "effects",
+      "description": "Light beam effect asset - positioned at route start on import",
+      "version": "1.0.0",
+      "tags": [
+        "beam",
+        "light",
+        "effect",
+        "glow"
+      ],
+      "collection_name": null,
+      "hide_viewport": false,
+      "hide_render": false,
+      "properties": {}
+    },
+    {
+      "id": "asset_water",
+      "name": "Asset Water",
+      "type": "collection",
+      "blend_file": "ASSET_WATER.blend",
+      "datablock_name": "ASSET_WATER",
+      "default_transform": {
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation_euler": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "category": "environment",
+      "description": "Water collection with custom LAKE shaders for lakes, rivers, and water effects",
+      "version": "1.0.0",
+      "tags": [
+        "water",
+        "lake",
+        "ocean",
+        "river",
+        "shader",
+        "environment",
+        "emissive"
+      ],
+      "collection_name": null,
+      "hide_viewport": false,
+      "hide_render": false,
+      "properties": {}
+    },
+    {
+      "id": "asset_ground",
+      "name": "Asset Ground",
+      "type": "material",
+      "blend_file": "ASSET_GROUND.blend",
+      "datablock_name": "ground",
+      "default_transform": {
+        "location": [0.0, 0.0, 0.0],
+        "rotation_euler": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      },
+      "category": "materials",
+      "description": "Material for the ground plane",
+      "version": "1.0.0",
+      "tags": ["ground", "material", "environment"],
+      "collection_name": null,
+      "hide_viewport": false,
+      "hide_render": false,
+      "properties": {}
+    },
+    {
+      "id": "asset_island",
+      "name": "Asset Island",
+      "type": "collection",
+      "blend_file": "ASSET_ISLAND.blend",
+      "datablock_name": "ASSET_ISLAND",
+      "default_transform": {
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation_euler": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "category": "environment",
+      "description": "Island terrain mesh with procedural gray material, smooth and solidify modifiers",
+      "version": "1.0.0",
+      "tags": [
+        "island",
+        "terrain",
+        "environment",
+        "mesh",
+        "procedural"
+      ],
+      "collection_name": "ASSET_ISLAND",
+      "hide_viewport": false,
+      "hide_render": false,
+      "properties": {
+        "vertices": 23458,
+        "polygons": 21848,
+        "material_nodes": 8,
+        "modifiers": ["Smooth", "Solidify"]
+      }
+    },
+    {
+      "id": "building_material",
+      "name": "UniversalShader Building Material",
+      "type": "material",
+      "blend_file": "ASSET_BUILDINGS.blend",
+      "datablock_name": "UniversalShader",
+      "default_transform": {
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation_euler": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "category": "materials",
+      "description": "Material for building visualization",
+      "version": "1.0.0",
+      "tags": [
+        "building",
+        "material"
+      ],
+      "collection_name": null,
+      "hide_viewport": false,
+      "hide_render": false,
+      "properties": {}
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+# BLOSM Route Asset Attributes
+# This file drives per-object import attributes.
+# How to use: Under a section [ObjectName], add or uncomment lines you want to apply, then save and re-run.
+#
+# Available Attributes (copy/paste under a [Section]):
+# scale = (1.0, 1.0, 1.0)
+# location = (0.0, 0.0, 0.0)
+# rotation_euler = (0.0, 0.0, 0.0)
+# show_name = True
+# hide_viewport = True
+# hide_render = True
+# GN:Socket Name = 0.0
+# GN[ModifierName]:Socket Name = 0.0
+# MOD[ModifierName]:property = 0
+
+
+[ASSET_BEAM]
+
+[CAR_TRAIL]
+
+[BUILDINGS_OLD]
+
+[BUILDINGS]
+
+[taxi sign.001]
+
+[ASSET_CAR]
+
+[CAR_LEAD]
+
+[CN_TOWER]
+
+[MARKER_START]
+
+[MARKER_END]
+
+[Empty]
+
+[ASSET_ROADS]
+
+[ASSET_ROADS.001]
+
+[ASSET_ROADS.002]
+
+[Start]
+
+[End]
+
+[ROUTE]
+
+[Lake_Mesh_Cutter]
+
+[Water_Plane_Result]
+
+[Water_Plane_Emissive]
+
+[Ground_Plane_Result]
+
+[Islands_Mesh]
