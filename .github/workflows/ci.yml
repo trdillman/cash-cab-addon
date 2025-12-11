@@ -42,9 +42,16 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Set up Blender
-      uses: prenault/setup-blender@v1
-      with:
-        blender-version: '4.1'
+      env:
+        BLENDER_VERSION: 4.5.4
+      run: |
+        set -euxo pipefail
+        ARCHIVE="blender-${BLENDER_VERSION}-linux-x64.tar.xz"
+        BASE_URL="https://download.blender.org/release/Blender${BLENDER_VERSION%.*}"
+        curl -L "$BASE_URL/$ARCHIVE" -o /tmp/blender.tar.xz
+        mkdir -p "$HOME/blender"
+        tar -xf /tmp/blender.tar.xz -C "$HOME/blender" --strip-components=1
+        echo "$HOME/blender" >> "$GITHUB_PATH"
     - name: Run Tests
       run: blender -b --python tests/test_runner.py
 
