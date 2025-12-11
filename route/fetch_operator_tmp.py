@@ -12,6 +12,12 @@ from ..app import blender as blenderApp
 from .utils import RouteServiceError, prepare_route, OverpassFetcher, _meters_to_lat_delta, _meters_to_lon_delta, _tile_bbox
 from .config import DEFAULT_CONFIG
 from . import buildings as route_buildings, water_manager
+nclass _StaticTileFetcher:
+    """Static tile fetcher that provides cached tile bytes"""
+    def __init__(self, tile_bytes):
+        self.tile_bytes = tile_bytes
+
+
 try:
     from .state_manager import RouteStateManager
 except ImportError:

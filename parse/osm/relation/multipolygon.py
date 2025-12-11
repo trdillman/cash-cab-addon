@@ -1,6 +1,7 @@
 from ...osm import Osm
 from . import Relation
 from ... import linestring, multilinestring, polygon, multipolygon
+from ... import parse
 
 
 class Linestring:

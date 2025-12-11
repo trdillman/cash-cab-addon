@@ -282,7 +282,7 @@ class RouteCamUnifiedSettings(bpy.types.PropertyGroup):
     # Shared
     target_curve = PointerProperty(type=bpy.types.Object, name="Route", update=update_callback)
     duration = IntProperty(name="Duration", default=120, update=update_callback)
-    engine_mode: EnumProperty(
+    engine_mode = EnumProperty(
         name="Engine",
         items=[('V2', "Robust Director (v2)", "Solver-based, non-destructive"),
                ('VIZ', "Keyframe Viz (v3)", "Direct curves, visualization path")],

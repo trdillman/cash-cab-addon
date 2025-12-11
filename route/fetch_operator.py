@@ -22,6 +22,12 @@ except ImportError as exc:
     print(f"[BLOSM] WARN RouteStateManager import failed: {exc}")
 
 
+class _StaticTileFetcher:
+    """Static tile fetcher that provides cached tile bytes"""
+    def __init__(self, tile_bytes):
+        self.tile_bytes = tile_bytes
+
+
 class RouteProgressReporter:
     """Progress reporting for route tile fetching"""
     def __init__(self, context):

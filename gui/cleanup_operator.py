@@ -5,6 +5,7 @@ Removes objects and data created by the addon
 
 import bpy
 from typing import Set, List
+from bpy.props import EnumProperty
 
 from .cleanup_patterns import (
     OBJECT_PATTERNS,
@@ -27,7 +28,7 @@ class BLOSM_OT_CleanAndClear(bpy.types.Operator):
     bl_description = "Remove CashCab assets from the scene"
     bl_options = {'REGISTER', 'UNDO'}
 
-    action: bpy.props.EnumProperty(
+    action = EnumProperty(
         name="Action",
         description="What to clean",
         items=[

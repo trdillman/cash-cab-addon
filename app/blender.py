@@ -14,6 +14,7 @@ if "bpy" in sys.modules:
     # Terrain import moved to lazy-load in terrain-specific methods (setTerrain, initTerrain)
     # This prevents import errors for route import which doesn't need terrain
     from ..util.blender import makeActive, appendNodeGroupFromFile, addGeometryNodesModifier
+    from ..util.polygon import Polygon
 
 
 _setAssetsDirStr = "Please set a directory with assets (building_materials.blend, vegetation.blend) in the addon preferences!"
@@ -135,7 +136,7 @@ class BlenderApp(BaseApp):
         assetsDir = context.scene.blosm.assetsDir
         if not assetsDir:
             # second try the <assetsDir> from the addon preferences
-            assetsDir = prefs[addonName].preferences.assetsDir if addonName in prefs else None
+            assetsDir = prefs[self.addonName].preferences.assetsDir if self.addonName in prefs else None
         if assetsDir:
             assetsDir = os.path.realpath(bpy.path.abspath(assetsDir))
         return assetsDir
@@ -376,7 +377,7 @@ class BlenderApp(BaseApp):
             assetsDir = self.assetsDir
             if not assetsDir:
                 # second try the <assetsDir> from the addon preferences
-                assetsDir = prefs[addonName].preferences.assetsDir if addonName in prefs else None
+                assetsDir = prefs[self.addonName].preferences.assetsDir if self.addonName in prefs else None
             if assetsDir:
                 assetsDir = os.path.realpath(bpy.path.abspath(assetsDir))
                 if not os.path.isdir(assetsDir):
@@ -581,8 +582,13 @@ class BlenderApp(BaseApp):
         size //= decimate  # size used in the loop computations
         
         minHeight = 32767
-        
+
         vertsCounter = 0
+
+        # Initialize previous interval variables
+        prevLonIntervalVertsCounter = 0
+        prevXsize = 0
+        prevYsize = 0
         
         # we have an extra row for the first latitude interval
         firstLatInterval = 1
