@@ -43,7 +43,8 @@ def get_version():
 def create_zip(version):
     """Creates a zip file for the addon."""
     addon_name = "cash_cab_addon"
-    zip_filename = f"{addon_name}-v{version}.zip"
+    zip_basename = addon_name.replace("_", "-")
+    zip_filename = f"{zip_basename}-v{version}.zip"
     
     with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zf:
         # Create the root folder inside the zip
