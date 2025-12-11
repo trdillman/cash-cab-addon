@@ -350,12 +350,13 @@ def import_assets(context: bpy.types.Context) -> Dict[str, Optional[str]]:
 
                 end_empty = bpy.data.objects.get('End')
                 if end_empty:
-                    marker_end_obj.location = end_empty.location
-                    print(f"[BLOSM] MARKER_END positioned at End location: {end_empty.location}")
+                    # Set x,y from End object, but force z to 30
+                    marker_end_obj.location = (end_empty.location.x, end_empty.location.y, 30.0)
+                    print(f"[BLOSM] MARKER_END positioned at End location with z=30: ({end_empty.location.x}, {end_empty.location.y}, 30.0)")
                 else:
-                    # Position at origin if no End object
-                    marker_end_obj.location = (0.0, 0.0, 0.0)
-                    print("[BLOSM] No End object found, MARKER_END positioned at origin")
+                    # Position at origin with z=30 if no End object
+                    marker_end_obj.location = (0.0, 0.0, 30.0)
+                    print("[BLOSM] No End object found, MARKER_END positioned at origin with z=30")
 
                 marker_end_obj.rotation_mode = 'XYZ'
                 marker_end_obj.hide_viewport = False

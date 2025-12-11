@@ -40,6 +40,11 @@ CAR_TRAIL_OBJECT_NAME = "CAR_TRAIL"
 CAR_TRAIL_TEMPLATE_BLEND = route_assets.ASSET_DIRECTORY / "ASSET_CAR_TRAIL.blend"
 CAR_TRAIL_RESAMPLE_SPACING = 10.0  # Project spec: CAR_TRAIL resample spacing (world units)
 CAR_TRAIL_SAMPLES_PER_SEGMENT = 16  # Project spec: CAR_TRAIL resample samples per segment
+ADDON_ROOT = Path(__file__).resolve().parent.parent
+CAMERA_BLEND_PATH = ADDON_ROOT / "assets" / "ASSET_CAMERA.blend"
+CAMERAS_COLLECTION_NAME = "CAMERAS"
+ASSET_CAMERA_NAME = "ASSET_CAMERA"
+SAFE_AREA_TARGET_VALUE = 0.95
 
 # --- AUTO PATCH HELPERS (non-breaking) ---
 def _pick_first_object_in_collection(coll):
@@ -152,6 +157,92 @@ def _ensure_cn_tower_marker(scene: Optional[bpy.types.Scene]) -> None:
         print(f"[BLOSM] WARN CN Tower marker placement failed: {exc}")
         return
     print(f"[BLOSM] CN Tower marker placed at ({marker.location.x:.3f}, {marker.location.y:.3f})")
+
+
+def _ensure_asset_camera(scene: Optional[bpy.types.Scene]) -> dict[str, object]:
+    summary = {"camera": None, "created": False, "linked_to_cameras": False, "safe_area_configured": False}
+    if scene is None:
+        return summary
+
+    cameras_coll = bpy.data.collections.get(CAMERAS_COLLECTION_NAME)
+    if cameras_coll is None:
+        cameras_coll = bpy.data.collections.new(CAMERAS_COLLECTION_NAME)
+        if scene.collection and cameras_coll.name not in {child.name for child in scene.collection.children}:
+            try:
+                scene.collection.children.link(cameras_coll)
+            except RuntimeError:
+                pass
+
+    camera_obj = bpy.data.objects.get(ASSET_CAMERA_NAME)
+    camera_created = False
+    if camera_obj is None:
+        if not CAMERA_BLEND_PATH.exists():
+            print(f"[BLOSM] WARN camera asset not found: {CAMERA_BLEND_PATH}")
+            summary["camera"] = None
+            return summary
+
+        try:
+            with bpy.data.libraries.load(str(CAMERA_BLEND_PATH), link=False) as (data_from, data_to):
+                camera_candidates = []
+                for name in data_from.objects:
+                    # Accessing bpy.data.objects[name] *before* it's loaded might cause issues
+                    # Instead, we rely on the name matching expected patterns.
+                    if "CAMERA" in name.upper() or name == ASSET_CAMERA_NAME:
+                        camera_candidates.append(name)
+                data_to.objects = camera_candidates
+        except Exception as exc:
+            print(f"[BLOSM] WARN camera asset append failed: {exc}")
+            return summary
+
+        # After loading, the objects should be available in bpy.data.objects
+        # Find the actual camera object, prioritizing ASSET_CAMERA_NAME
+        camera_obj = bpy.data.objects.get(ASSET_CAMERA_NAME)
+        if camera_obj is None:
+            # If exact name not found, iterate through newly appended objects
+            for obj_name in data_to.objects:
+                candidate = bpy.data.objects.get(obj_name)
+                if candidate and candidate.type == 'CAMERA':
+                    camera_obj = candidate
+                    if obj_name != ASSET_CAMERA_NAME:
+                        print(f"[BLOSM] WARN ASSET_CAMERA not found by exact name; using first appended camera: {obj_name}")
+                    break
+        
+        if camera_obj is not None:
+            camera_created = True
+
+    if camera_obj is None:
+        summary["camera"] = None
+        return summary
+
+    linked_to_cameras = False
+    if cameras_coll not in getattr(camera_obj, "users_collection", []):
+        try:
+            cameras_coll.objects.link(camera_obj)
+            linked_to_cameras = True
+        except Exception:
+            pass
+
+    if scene.collection and cameras_coll.name not in {child.name for child in scene.collection.children}:
+        try:
+            scene.collection.children.link(cameras_coll)
+        except Exception:
+            pass
+
+    safe_area_configured = False
+    data = getattr(camera_obj, "data", None)
+    if data is not None:
+        try:
+            if hasattr(data, "show_safe_areas"):
+                data.show_safe_areas = True
+            safe_area_configured = True # Assuming pre-configured if show_safe_areas is enabled
+        except Exception as exc:
+            print(f"[BLOSM] WARN camera safe areas update failed: {exc}")
+
+    summary["camera"] = camera_obj
+    summary["created"] = camera_created
+    summary["linked_to_cameras"] = linked_to_cameras
+    summary["safe_area_configured"] = safe_area_configured
+    return summary
 
 
 def _ensure_car_trail_node_group() -> bpy.types.NodeTree | None:
@@ -3527,6 +3618,23 @@ def run(ctx_or_scene: SceneLike = None) -> dict[str, object]:
     except Exception as exc:
         print(f"[BLOSM] WARN CAR_TRAIL material assignment failed: {exc}")
 
+    # --- Camera Asset Integration ---
+    try:
+        # Ensure the standardized ASSET_CAMERA is present and in the CAMERAS collection
+        cam_summary = _ensure_asset_camera(scene)
+        cam_obj = cam_summary.get("camera")
+        cam_name = cam_obj.name if cam_obj else None
+        result["asset_camera"] = cam_name
+        result["asset_camera_summary"] = {
+            k: str(v) for k, v in cam_summary.items() if k != "camera"
+        }
+        if cam_obj:
+            print("[BLOSM] ASSET_CAMERA ensured in CAMERAS")
+        else:
+            print("[BLOSM] WARN ASSET_CAMERA not present after ensure")
+    except Exception as exc:
+        print(f"[BLOSM] WARN finalizer ASSET_CAMERA ensure failed: {exc}")
+
     return result
 
 
@@ -3708,35 +3816,7 @@ def _run_tylers_sandbox(scene: Optional[bpy.types.Scene]) -> Optional[dict[str, 
     except Exception as exc:
         print(f"[BLOSM] Sandbox car cleanup failed: {exc}")
 
-    # 2) Consolidate all cameras into a single Cameras collection
-    try:
-        camera_collection_name = "Cameras"
-        cam_coll = bpy.data.collections.get(camera_collection_name)
-        if cam_coll is None:
-            cam_coll = bpy.data.collections.new(camera_collection_name)
-        if scene.collection and cam_coll.name not in scene.collection.children:
-            try:
-                scene.collection.children.link(cam_coll)
-            except Exception:
-                pass
-        for obj in list(bpy.data.objects):
-            data = getattr(obj, "data", None)
-            if getattr(data, "type", None) == "CAMERA":
-                try:
-                    for coll in list(getattr(obj, "users_collection", []) or []):
-                        if coll is cam_coll:
-                            continue
-                        try:
-                            coll.objects.unlink(obj)
-                        except Exception:
-                            pass
-                    if obj.name not in cam_coll.objects:
-                        cam_coll.objects.link(obj)
-                except Exception:
-                    pass
-        result["camera_collection"] = camera_collection_name
-    except Exception as exc:
-        print(f"[BLOSM] Sandbox camera consolidation failed: {exc}")
+
 
     # 3) Ensure CN_TOWER lives in ASSET_CNTower collection only
     try:
@@ -3893,7 +3973,3 @@ def _set_roads_z_scale(scene: Optional[bpy.types.Scene]) -> bool:
         return True
     except Exception:
         return False
-
-
-
-

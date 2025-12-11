@@ -1,0 +1,89 @@
+name: Blender CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python
+      uses: actions/setup-python@v3
+      with:
+        python-version: '3.10'
+    - name: Install dependencies
+      run: pip install flake8
+    - name: Lint with flake8
+      run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+  build:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+    - uses: actions/checkout@v3
+    - name: Get Version
+      id: version
+      run: echo "::set-output name=VERSION::$(python -c "import re; print(re.search(r'v(\d+\.\d+\.\d+)', open('.version').readline()).group(1))")"
+    - name: Build Addon
+      run: python build.py
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: cash-cab-addon
+        path: cash-cab-addon-v*.zip
+
+  test:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Blender
+      uses: prenault/setup-blender@v1
+      with:
+        blender-version: '4.1'
+    - name: Run Tests
+      run: blender -b --python tests/test_runner.py
+    - name: Run Strict Audit
+      run: blender -b --python tests/audits/scene_auditor.py -- --level strict --report-path ./audit-report.xml
+    - name: Upload Audit Report
+      uses: actions/upload-artifact@v3
+      with:
+        name: audit-report
+        path: audit-report.xml
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    steps:
+    - uses: actions/checkout@v3
+    - name: Get Version
+      id: version
+      run: echo "::set-output name=VERSION::$(python -c "import re; print(re.search(r'v(\d+\.\d+\.\d+)', open('.version').readline()).group(1))")"
+    - name: Download Artifact
+      uses: actions/download-artifact@v3
+      with:
+        name: cash-cab-addon
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ steps.version.outputs.VERSION }}
+        release_name: Release v${{ steps.version.outputs.VERSION }}
+        draft: false
+        prerelease: false
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./cash-cab-addon-v${{ steps.version.outputs.VERSION }}.zip
+        asset_name: cash-cab-addon-v${{ steps.version.outputs.VERSION }}.zip
+        asset_content_type: application/zip

@@ -21,7 +21,6 @@ COLLECTION_NAMES: Set[str] = {
     'ASSET_ROUTE', 'ASSET_BUILDINGS', 'BLOSM_Assets',
     'ASSET_BASE-START', 'ASSET_BASE-END', 'ASSET_CAR',
     'ASSET_WORLD', 'way_profiles', 'ASSET_ROADS',  # Added ASSET_ROADS collection
-    '.other'  # Added .other collection which contains CashCab imports
 }
 
 # Asset group definitions for related object cleanup
