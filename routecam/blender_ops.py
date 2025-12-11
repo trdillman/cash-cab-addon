@@ -280,8 +280,8 @@ class ROUTECAM_OT_RandomBatch(bpy.types.Operator):
 
 class RouteCamUnifiedSettings(bpy.types.PropertyGroup):
     # Shared
-    target_curve: PointerProperty(type=bpy.types.Object, name="Route", update=update_callback)
-    duration: IntProperty(name="Duration", default=120, update=update_callback)
+    target_curve = PointerProperty(type=bpy.types.Object, name="Route", update=update_callback)
+    duration = IntProperty(name="Duration", default=120, update=update_callback)
     engine_mode: EnumProperty(
         name="Engine",
         items=[('V2', "Robust Director (v2)", "Solver-based, non-destructive"),
@@ -290,33 +290,33 @@ class RouteCamUnifiedSettings(bpy.types.PropertyGroup):
     )
     
     # V2 Params
-    margin: FloatProperty(name="Margin", default=1.9, update=update_callback)
-    zoom_ratio: FloatProperty(name="Zoom", default=0.06, update=update_callback)
-    pitch_start: FloatProperty(name="Start Pitch", default=30.0, update=update_callback)
-    pitch_end: FloatProperty(name="End Pitch", default=15.0, update=update_callback)
-    yaw_offset: FloatProperty(name="Start Yaw", default=-75.0, update=update_callback)
-    beat_drift: FloatProperty(name="Drift %", default=0.2, update=update_callback)
-    beat_zoom: FloatProperty(name="Zoom %", default=0.4, update=update_callback)
-    v2_cached_samples: StringProperty()
-    v2_cached_plan: StringProperty()
-    
+    margin = FloatProperty(name="Margin", default=1.9, update=update_callback)
+    zoom_ratio = FloatProperty(name="Zoom", default=0.06, update=update_callback)
+    pitch_start = FloatProperty(name="Start Pitch", default=30.0, update=update_callback)
+    pitch_end = FloatProperty(name="End Pitch", default=15.0, update=update_callback)
+    yaw_offset = FloatProperty(name="Start Yaw", default=-75.0, update=update_callback)
+    beat_drift = FloatProperty(name="Drift %", default=0.2, update=update_callback)
+    beat_zoom = FloatProperty(name="Zoom %", default=0.4, update=update_callback)
+    v2_cached_samples = StringProperty()
+    v2_cached_plan = StringProperty()
+
     # Viz Params (Mappings)
     # We map these to the Viz logic names
-    sect1_margin: FloatProperty(name="Start Scale", default=1.5, update=update_callback)
-    sect1_angle: FloatProperty(name="Start Angle", default=-70.0, update=update_callback)
-    sect1_pitch: FloatProperty(name="Start Pitch", default=60.0, update=update_callback)
-    sect2_time: FloatProperty(name="Drift Time", default=0.3, update=update_callback)
-    sect2_push: FloatProperty(name="Drift Push", default=0.1, update=update_callback)
-    sect3_zoom: FloatProperty(name="End Scale", default=0.08, update=update_callback)
-    sect3_angle: FloatProperty(name="End Angle", default=0.0, update=update_callback)
-    sect3_pitch: FloatProperty(name="End Pitch", default=73.0, update=update_callback)
-    sect3_offset_x: FloatProperty(name="Off X", default=0.0, update=update_callback)
-    sect3_offset_y: FloatProperty(name="Off Y", default=0.0, update=update_callback)
-    rot_power: FloatProperty(name="Rot Power", default=1.0, update=update_callback)
-    optimize_keys: BoolProperty(name="Optimize", default=True) # Not used in callback, baked on generate
+    sect1_margin = FloatProperty(name="Start Scale", default=1.5, update=update_callback)
+    sect1_angle = FloatProperty(name="Start Angle", default=-70.0, update=update_callback)
+    sect1_pitch = FloatProperty(name="Start Pitch", default=60.0, update=update_callback)
+    sect2_time = FloatProperty(name="Drift Time", default=0.3, update=update_callback)
+    sect2_push = FloatProperty(name="Drift Push", default=0.1, update=update_callback)
+    sect3_zoom = FloatProperty(name="End Scale", default=0.08, update=update_callback)
+    sect3_angle = FloatProperty(name="End Angle", default=0.0, update=update_callback)
+    sect3_pitch = FloatProperty(name="End Pitch", default=73.0, update=update_callback)
+    sect3_offset_x = FloatProperty(name="Off X", default=0.0, update=update_callback)
+    sect3_offset_y = FloatProperty(name="Off Y", default=0.0, update=update_callback)
+    rot_power = FloatProperty(name="Rot Power", default=1.0, update=update_callback)
+    optimize_keys = BoolProperty(name="Optimize", default=True) # Not used in callback, baked on generate
     
     # Batch
-    batch_count: IntProperty(name="Batch Count", default=5, min=1)
+    batch_count = IntProperty(name="Batch Count", default=5, min=1)
 
 class ROUTECAM_PT_Unified(bpy.types.Panel):
     bl_label = "RouteCam Ultimate"

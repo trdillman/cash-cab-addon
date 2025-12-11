@@ -31,7 +31,7 @@ try:
     import mathutils
     from bpy.types import Operator, Panel, PropertyGroup
     from bpy.app.handlers import persistent
-    from bpy.props import PointerProperty, StringProperty, IntProperty, FloatProperty, BoolProperty, EnumProperty, FloatVectorProperty
+    from bpy.props import PointerProperty, StringProperty, IntProperty, FloatProperty, BoolProperty, EnumProperty, FloatVectorProperty, HIDDEN
     HAS_BLENDER = True
 except ImportError:
     HAS_BLENDER = False
@@ -351,21 +351,21 @@ if HAS_BLENDER:
         """Blender property group for RouteCam settings."""
 
         # Route object reference
-        route_object: PointerProperty(
+        route_object = PointerProperty(
             name="Route Curve",
             description="Curve object to use as camera path",
             type=bpy.types.Object
         )
 
         # Animation timing
-        frame_start: IntProperty(
+        frame_start = IntProperty(
             name="Start Frame",
             description="First frame of animation",
             default=1,
             min=1
         )
 
-        frame_end: IntProperty(
+        frame_end = IntProperty(
             name="End Frame",
             description="Last frame of animation",
             default=120,
@@ -373,21 +373,21 @@ if HAS_BLENDER:
         )
 
         # Camera orientation (for advanced control)
-        camera_right: FloatVectorProperty(
+        camera_right = FloatVectorProperty(
             name="Camera Right",
             description="Camera right vector",
             default=(1.0, 0.0, 0.0),
             size=3
         )
 
-        camera_up: FloatVectorProperty(
+        camera_up = FloatVectorProperty(
             name="Camera Up",
             description="Camera up vector",
             default=(0.0, 1.0, 0.0),
             size=3
         )
 
-        camera_forward: FloatVectorProperty(
+        camera_forward = FloatVectorProperty(
             name="Camera Forward",
             description="Camera forward vector",
             default=(0.0, 0.0, -1.0),
@@ -395,14 +395,14 @@ if HAS_BLENDER:
         )
 
         # Analysis state
-        analysis_valid: BoolProperty(
+        analysis_valid = BoolProperty(
             name="Analysis Valid",
             description="Whether route analysis is up to date",
             default=False,
             options={'HIDDEN'}
         )
 
-        last_route_name: StringProperty(
+        last_route_name = StringProperty(
             name="Last Route Name",
             description="Name of last analyzed route",
             default="",
@@ -410,7 +410,7 @@ if HAS_BLENDER:
         )
 
         # Internal storage for animation targets
-        style_keyframes_json: StringProperty(
+        style_keyframes_json = StringProperty(
             name="Style Keyframes",
             description="Serialized animation targets",
             default="",
