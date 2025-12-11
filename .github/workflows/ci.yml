@@ -63,13 +63,13 @@ jobs:
     if: github.ref == 'refs/heads/main'
     steps:
     - uses: actions/checkout@v3
-    - name: Get Version
-      id: version
-      run: echo "::set-output name=VERSION::$(python -c "import re; print(re.search(r'v(\d+\.\d+\.\d+)', open('.version').readline()).group(1))")"
     - name: Download Artifact
       uses: actions/download-artifact@v3
       with:
         name: cash-cab-addon
+    - name: Get Version from Artifact
+      id: version
+      run: echo "::set-output name=VERSION::$(ls cash-cab-addon-v*.zip | sed -E 's/.*v([0-9]+\.[0-9]+\.[0-9]+)\.zip/\1/')"
     - name: Create Release
       id: create_release
       uses: actions/create-release@v1
