@@ -31,26 +31,45 @@ jobs:
     - name: Build Addon
       run: python build.py
     - name: Upload Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v3
       with:
         name: cash-cab-addon
         path: cash-cab-addon-v*.zip
 
-  deploy:
+  test:
     runs-on: ubuntu-latest
     needs: build
-    permissions:
-      contents: write
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Blender
+      uses: prenault/setup-blender@v1
+      with:
+        blender-version: '4.1'
+    - name: Run Tests
+      run: blender -b --python tests/test_runner.py
+
+    - name: Run Strict Audit
+      run: blender -b --python tests/audits/scene_auditor.py -- --level strict --report-path reports/strict_audit_report.xml
+
+    - name: Upload Audit Report
+      uses: actions/upload-artifact@v3
+      with:
+        name: audit-report
+        path: reports/strict_audit_report.xml
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: test
     if: github.ref == 'refs/heads/main'
     steps:
     - uses: actions/checkout@v3
+    - name: Get Version
+      id: version
+      run: echo "::set-output name=VERSION::$(python -c "import re; print(re.search(r'v(\d+\.\d+\.\d+)', open('.version').readline()).group(1))")"
     - name: Download Artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v3
       with:
         name: cash-cab-addon
-    - name: Get Version from Artifact
-      id: version
-      run: echo "::set-output name=VERSION::$(ls cash-cab-addon-v*.zip | sed -E 's/.*v([0-9]+\.[0-9]+\.[0-9]+)\.zip/\1/')"
     - name: Create Release
       id: create_release
       uses: actions/create-release@v1
