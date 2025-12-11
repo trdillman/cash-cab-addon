@@ -1,7 +1,8 @@
 from ...osm import Osm
 from . import Relation
-from ... import linestring, multilinestring, polygon, multipolygon
-from ... import parse
+from ... import linestring as linestring_type, multilinestring, polygon, multipolygon
+# Import the parse package explicitly (package has no symbol named 'parse').
+import cash_cab_addon.parse as parse
 
 
 class Linestring:
@@ -304,8 +305,8 @@ class Multipolygon(Relation):
             # The number of entries in <linestrings> is divisible by two,
             # so the condition <len(linestrings) == 2> actually means the only broken linestring
             if not polygons and len(linestrings) == 2:
-                self.t = linestring
                 self.ls = next( iter(linestrings.values()) )
+                self.t = linestring_type
             else:
                 self.t = multilinestring
                 l = polygons
@@ -317,10 +318,10 @@ class Multipolygon(Relation):
                     if nodeId in nodeIds:
                         continue
                     else:
-                        linestring = linestrings[nodeId]
+                        current_linestring = linestrings[nodeId]
                         # add to <nodeIds> the id of the opposite open OSM node of <linestring>
-                        nodeIds.add(linestring.end if nodeId == linestring.start else linestring.start)
-                        l.append(linestring)
+                        nodeIds.add(current_linestring.end if nodeId == current_linestring.start else current_linestring.start)
+                        l.append(current_linestring)
                 self.ls = l
         else:
             self.valid = False

@@ -4,7 +4,10 @@ Minimal property definitions for route import functionality only.
 """
 
 import bpy
-from bpy.props import UNSIGNED
+try:
+    from bpy.props import UNSIGNED  # Blender 4.2+ only
+except Exception:
+    UNSIGNED = None  # Fallback for older Blender builds
 
 
 

@@ -835,11 +835,35 @@ def _build_car_trail_from_route(scene: Optional[bpy.types.Scene]) -> bpy.types.O
             bevel_obj = bevel_source.bevel_object
         else:
             bevel_obj = bpy.data.objects.get("_profile_curve")
+        if bevel_obj is None:
+            # Create a simple fallback bevel profile curve; link into ASSET_CAR if possible
+            try:
+                bevel_curve = bpy.data.curves.new(name="_profile_curve_DATA", type='CURVE')
+                bevel_curve.dimensions = '3D'
+                spline = bevel_curve.splines.new('BEZIER')
+                spline.bezier_points.add(1)
+                spline.bezier_points[0].co = (0.0, 0.1, 0.0)
+                spline.bezier_points[1].co = (0.0, -0.1, 0.0)
+                bevel_obj = bpy.data.objects.new("_profile_curve", bevel_curve)
+                try:
+                    car_collection.objects.link(bevel_obj)
+                except Exception:
+                    bpy.context.scene.collection.objects.link(bevel_obj)
+            except Exception as exc_create:
+                print(f"[BLOSM] WARN fallback profile curve creation failed: {exc_create}")
+                bevel_obj = None
+
         if bevel_obj is not None:
             try:
                 data.bevel_object = bevel_obj
-            except Exception:
-                pass
+                # Ensure profile is present in ASSET_CAR collection
+                if bevel_obj not in getattr(bevel_obj, "users_collection", []):
+                    try:
+                        car_collection.objects.link(bevel_obj)
+                    except Exception:
+                        pass
+            except Exception as exc_inner:
+                print(f"[BLOSM] WARN car trail bevel assign failed: {exc_inner}")
 
     return car_trail
 
@@ -1681,16 +1705,7 @@ def _promote_buildings_and_group_others(scene: Optional[bpy.types.Scene]) -> dic
     if scene is None:
         return summary
 
-    # Ensure destination collections
-    other = bpy.data.collections.get('.other')
-    if other is None:
-        other = bpy.data.collections.new('.other')
-        try:
-            root = getattr(scene, 'collection', None)
-            if root and other.name not in root.children:
-                root.children.link(other)
-        except Exception:
-            pass
+    # Ensure destination collections (no '.other' grouping anymore)
     bld_coll = bpy.data.collections.get('ASSET_BUILDINGS')
     if bld_coll is None:
         bld_coll = bpy.data.collections.new('ASSET_BUILDINGS')
@@ -1764,15 +1779,28 @@ def _promote_buildings_and_group_others(scene: Optional[bpy.types.Scene]) -> dic
         except Exception:
             pass
 
-        # Group under .other (exclusive from the scene root)
-        exclusive_move_collection(coll, other)
-        summary["maps_grouped"] += 1
+        # (No grouping under '.other' – leave map collections where they are)
+        pass
 
-    # Also group way_profiles under .other if present
+    # Do not group way_profiles; leave in place
     wp = bpy.data.collections.get('way_profiles')
     if wp is not None:
-        exclusive_move_collection(wp, other)
-        summary["profiles_grouped"] = 1
+        pass
+
+    # Remove legacy '.other' collection if it exists
+    other = bpy.data.collections.get('.other')
+    if other is not None:
+        try:
+            for sc in bpy.data.scenes:
+                root = getattr(sc, 'collection', None)
+                if root and root.children.get(other.name):
+                    root.children.unlink(other)
+        except Exception:
+            pass
+        try:
+            bpy.data.collections.remove(other)
+        except Exception:
+            pass
 
     return summary
 # --------- End promote/group helpers ---------
