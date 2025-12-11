@@ -12,10 +12,9 @@ __pycache__/
 .vscode/
 
 # Generated reports
+reports/
 audit_report.xml
 e2e_strict_audit_report.xml
-quick_audit_report.xml
-strict_audit_report.xml
 
 # Built addon zip
 *.zip

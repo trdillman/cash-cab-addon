@@ -47,13 +47,15 @@ jobs:
         blender-version: '4.1'
     - name: Run Tests
       run: blender -b --python tests/test_runner.py
+
     - name: Run Strict Audit
-      run: blender -b --python tests/audits/scene_auditor.py -- --level strict --report-path ./audit-report.xml
+      run: blender -b --python tests/audits/scene_auditor.py -- --level strict --report-path reports/strict_audit_report.xml
+
     - name: Upload Audit Report
       uses: actions/upload-artifact@v3
       with:
         name: audit-report
-        path: audit-report.xml
+        path: reports/strict_audit_report.xml
 
   deploy:
     runs-on: ubuntu-latest

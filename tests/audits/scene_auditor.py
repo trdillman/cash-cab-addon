@@ -194,8 +194,10 @@ def main():
         help="The level of audit to run."
     )
     parser.add_argument(
-        '--report-path', type=str, default="audit_report.xml",
-        help="Path to save the JUnit-XML report."
+                '--report-path',
+                type=str,
+                default="reports/audit_report.xml",
+                help="Path to save the JUnit-XML report."
     )
     
     argv = sys.argv
