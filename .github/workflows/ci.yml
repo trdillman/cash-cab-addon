@@ -31,7 +31,7 @@ jobs:
     - name: Build Addon
       run: python build.py
     - name: Upload Artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: cash-cab-addon
         path: cash-cab-addon-v*.zip
@@ -52,7 +52,7 @@ jobs:
       run: blender -b --python tests/audits/scene_auditor.py -- --level strict --report-path reports/strict_audit_report.xml
 
     - name: Upload Audit Report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: audit-report
         path: reports/strict_audit_report.xml
@@ -64,7 +64,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Download Artifact
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: cash-cab-addon
     - name: Get Version from Artifact
