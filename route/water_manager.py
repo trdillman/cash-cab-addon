@@ -716,7 +716,8 @@ def process(context, bounds=None):
         bpy.ops.mesh.primitive_plane_add(size=1, location=(land_cx, land_cy, GROUND_PLANE_Z))
         ground = context.active_object
         ground.name = "Ground_Plane_Result"
-        ground.scale = (land_w, land_h, 1)
+        # Use a slim Z scale so the ground plane is visually thin
+        ground.scale = (land_w, land_h, 0.1)
         bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
         _move_to_collection(ground, runtime_collection)
         

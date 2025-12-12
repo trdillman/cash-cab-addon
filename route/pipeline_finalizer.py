@@ -45,6 +45,7 @@ CAMERA_BLEND_PATH = ADDON_ROOT / "assets" / "ASSET_CAMERA.blend"
 CAMERAS_COLLECTION_NAME = "CAMERAS"
 ASSET_CAMERA_NAME = "ASSET_CAMERA"
 SAFE_AREA_TARGET_VALUE = 0.95
+PROFILE_CURVE_OBJECT_NAME = "_profile_curve"
 
 # --- AUTO PATCH HELPERS (non-breaking) ---
 def _pick_first_object_in_collection(coll):
@@ -361,6 +362,67 @@ def _configure_car_trail_drivers(
             print(f"[BLOSM] WARN car trail driver setup failed for {prop}: {exc}")
 
     return created
+
+
+def _ensure_profile_curve_asset(scene: Optional[bpy.types.Scene]) -> Optional[bpy.types.Object]:
+    """Ensure the canonical _profile_curve object exists and lives in ASSET_CAR.
+
+    This inlines the behavior of external 'replace_profile_curve' helper scripts
+    so that new imports always have a correct profile curve without any
+    post-processing.
+    """
+    if scene is None:
+        return None
+
+    profile_obj = bpy.data.objects.get(PROFILE_CURVE_OBJECT_NAME)
+
+    # Resolve or create the ASSET_CAR collection.
+    car_collection = bpy.data.collections.get("ASSET_CAR")
+    if car_collection is None:
+        car_collection = bpy.data.collections.new("ASSET_CAR")
+        root = getattr(scene, "collection", None)
+        if root and car_collection.name not in root.children:
+            try:
+                root.children.link(car_collection)
+            except RuntimeError:
+                pass
+
+    # If no profile curve exists yet, append it from the ASSET_CAR_TRAIL asset.
+    if profile_obj is None:
+        if not CAR_TRAIL_TEMPLATE_BLEND.exists():
+            print(f"[BLOSM] WARN profile curve asset missing: {CAR_TRAIL_TEMPLATE_BLEND}")
+            return None
+        try:
+            with bpy.data.libraries.load(str(CAR_TRAIL_TEMPLATE_BLEND), link=False) as (data_from, data_to):
+                names = getattr(data_from, "objects", []) or []
+                if PROFILE_CURVE_OBJECT_NAME in names:
+                    data_to.objects = [PROFILE_CURVE_OBJECT_NAME]
+                else:
+                    print(f"[BLOSM] WARN profile curve '{PROFILE_CURVE_OBJECT_NAME}' not found in {CAR_TRAIL_TEMPLATE_BLEND}")
+                    return None
+        except Exception as exc:
+            print(f"[BLOSM] WARN profile curve append failed: {exc}")
+            return None
+
+        profile_obj = bpy.data.objects.get(PROFILE_CURVE_OBJECT_NAME)
+
+    if profile_obj is None:
+        return None
+
+    # Move the profile curve into ASSET_CAR collection exclusively.
+    for coll in list(getattr(profile_obj, "users_collection", []) or []):
+        try:
+            coll.objects.unlink(profile_obj)
+        except Exception:
+            pass
+    try:
+        if profile_obj.name not in car_collection.objects:
+            car_collection.objects.link(profile_obj)
+    except Exception:
+        # If linking fails we still keep the object available in bpy.data.
+        pass
+
+    return profile_obj
 
 
 def _append_car_trail_template() -> bpy.types.Object:
@@ -782,6 +844,9 @@ def _build_car_trail_from_route(scene: Optional[bpy.types.Scene]) -> bpy.types.O
     if car_collection is None:
         return None
 
+    # Ensure the canonical profile curve exists for bevel fallbacks and audits.
+    _ensure_profile_curve_asset(scene)
+
     existing = bpy.data.objects.get(CAR_TRAIL_OBJECT_NAME)
     if existing:
         for coll in list(getattr(existing, 'users_collection', []) or []):
@@ -863,25 +928,7 @@ def _build_car_trail_from_route(scene: Optional[bpy.types.Scene]) -> bpy.types.O
         if bevel_source is not None and getattr(bevel_source, "bevel_object", None) is not None:
             bevel_obj = bevel_source.bevel_object
         else:
-            bevel_obj = bpy.data.objects.get("_profile_curve")
-        if bevel_obj is None:
-            # Create a simple fallback bevel profile curve; link into ASSET_CAR if possible
-            try:
-                bevel_curve = bpy.data.curves.new(name="_profile_curve_DATA", type='CURVE')
-                bevel_curve.dimensions = '3D'
-                spline = bevel_curve.splines.new('BEZIER')
-                spline.bezier_points.add(1)
-                spline.bezier_points[0].co = (0.0, 0.1, 0.0)
-                spline.bezier_points[1].co = (0.0, -0.1, 0.0)
-                bevel_obj = bpy.data.objects.new("_profile_curve", bevel_curve)
-                try:
-                    car_collection.objects.link(bevel_obj)
-                except Exception:
-                    bpy.context.scene.collection.objects.link(bevel_obj)
-            except Exception as exc_create:
-                print(f"[BLOSM] WARN fallback profile curve creation failed: {exc_create}")
-                bevel_obj = None
-
+            bevel_obj = bpy.data.objects.get(PROFILE_CURVE_OBJECT_NAME)
         if bevel_obj is not None:
             try:
                 data.bevel_object = bevel_obj
@@ -2425,6 +2472,8 @@ def _resync_car_trail_transform(scene: Optional[bpy.types.Scene]) -> bool:
     if car_trail is None:
         return False
     try:
+        # Ensure profile curve asset is available for bevel fallback.
+        _ensure_profile_curve_asset(scene)
         car_trail.matrix_world = route_obj.matrix_world.copy()
         # Keep bevel reference intact: prefer route bevel_object, fallback to _profile_curve.
         data = getattr(car_trail, "data", None)
@@ -2434,7 +2483,7 @@ def _resync_car_trail_transform(scene: Optional[bpy.types.Scene]) -> bool:
             if src_data is not None and getattr(src_data, "bevel_object", None) is not None:
                 bevel_obj = src_data.bevel_object
             else:
-                bevel_obj = bpy.data.objects.get("_profile_curve")
+                bevel_obj = bpy.data.objects.get(PROFILE_CURVE_OBJECT_NAME)
             if bevel_obj is not None:
                 try:
                     data.bevel_object = bevel_obj
@@ -2474,6 +2523,83 @@ ASSET_WORLD_BLEND = route_assets.ASSET_DIRECTORY / "ASSET_WORLD.blend"
 
 MAP_COLLECTION_NAME = "Map"
 
+
+def _ensure_cashcab_render_output(scene: Optional[bpy.types.Scene]) -> Optional[str]:
+    """Standardize render output path to CashCab convention.
+
+    - For batch imports, prefer an explicit shot code:
+      scene.blosm.shot_code or scene['cashcab_shot_code'].
+    - Otherwise fall back to a generic '//CashCab_3D_' pattern.
+    """
+    if scene is None:
+        return None
+
+    render = getattr(scene, "render", None)
+    if render is None:
+        return None
+
+    shot_code: Optional[str] = None
+
+    # 1) Prefer a dedicated shot_code property on the addon, if present.
+    props = getattr(scene, "blosm", None)
+    if props is not None and hasattr(props, "shot_code"):
+        try:
+            raw = getattr(props, "shot_code", "")
+            raw_str = str(raw).strip()
+            if raw_str:
+                shot_code = raw_str
+        except Exception:
+            pass
+
+    # 2) Fallback: generic scene custom property set by batch tools.
+    if not shot_code:
+        raw = scene.get("cashcab_shot_code")
+        if raw is not None:
+            try:
+                raw_str = str(raw).strip()
+                if raw_str:
+                    shot_code = raw_str
+            except Exception:
+                pass
+
+    # 3) Resolve the target path.
+    if shot_code:
+        target = f"//{shot_code}_3D_"
+    else:
+        target = "//CashCab_3D_"
+
+    # 4) Apply the target path to all scenes so that the active scene and any
+    # auxiliary scenes (e.g. "CashCab" vs "Scene") remain consistent.
+    try:
+        scenes = list(getattr(bpy.data, "scenes", []) or [])
+    except Exception:
+        scenes = [scene]
+
+    for sc in scenes:
+        render_sc = getattr(sc, "render", None)
+        if render_sc is None:
+            continue
+        current_sc = getattr(render_sc, "filepath", "")
+        try:
+            if current_sc != target:
+                render_sc.filepath = target
+                try:
+                    render_sc.use_file_extension = True
+                except Exception:
+                    pass
+        except Exception as exc:
+            print(f"[BLOSM] WARN render output ensure failed for scene '{getattr(sc, 'name', '?')}': {exc}")
+        # Keep the shot code in sync across scenes where possible.
+        if shot_code:
+            try:
+                if sc.get("cashcab_shot_code") != shot_code:
+                    sc["cashcab_shot_code"] = shot_code
+            except Exception:
+                pass
+
+    print(f"[BLOSM] render output ensure: shot_code={shot_code!r} target={target!r} scenes={len(scenes)}")
+
+    return target
 
 
 
@@ -3674,6 +3800,14 @@ def run(ctx_or_scene: SceneLike = None) -> dict[str, object]:
             result["car_trail_material"] = "CAR_TRAIL_SHADER"
     except Exception as exc:
         print(f"[BLOSM] WARN CAR_TRAIL material assignment failed: {exc}")
+
+    # Ensure a standardized render output path for this CashCab scene.
+    try:
+        render_path = _ensure_cashcab_render_output(scene)
+        if render_path:
+            result["render_output"] = render_path
+    except Exception as exc:
+        print(f"[BLOSM] WARN finalizer render output ensure failed: {exc}")
 
     # --- Camera Asset Integration ---
     try:
