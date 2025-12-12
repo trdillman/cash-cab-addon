@@ -476,7 +476,32 @@ class BLOSM_OT_FetchRouteMap(bpy.types.Operator):
             # Collect waypoint addresses
             waypoint_addresses = [wp.address for wp in addon.route_waypoints if wp.address.strip()]
 
-            return prepare_route(start_address, end_address, padding_m, user_agent, waypoint_addresses=waypoint_addresses if waypoint_addresses else None)
+            from . import utils as route_utils
+            prev_snap = getattr(route_utils, "SNAP_TO_ROAD_CENTERLINE", True)
+            route_utils.SNAP_TO_ROAD_CENTERLINE = bool(
+                getattr(addon, "route_snap_to_road_centerline", True)
+            )
+            try:
+                route_ctx = prepare_route(
+                    start_address,
+                    end_address,
+                    padding_m,
+                    user_agent,
+                    waypoint_addresses=waypoint_addresses if waypoint_addresses else None,
+                )
+
+                # Sync final geocoded/snapped coordinates back to addon properties
+                try:
+                    addon.route_start_address_lat = float(route_ctx.start.lat)
+                    addon.route_start_address_lon = float(route_ctx.start.lon)
+                    addon.route_end_address_lat = float(route_ctx.end.lat)
+                    addon.route_end_address_lon = float(route_ctx.end.lon)
+                except Exception:
+                    pass
+
+                return route_ctx
+            finally:
+                route_utils.SNAP_TO_ROAD_CENTERLINE = prev_snap
         except RouteServiceError as e:
             # Provide clear, friendly guidance for address/routing problems
             if log:

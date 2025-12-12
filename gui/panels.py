@@ -36,6 +36,7 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
         # Address inputs
         col = layout.column(align=True)
         col.prop(addon, "route_start_address", text="Start Address")
+        col.prop(addon, "route_snap_to_road_centerline", text="Snap to road centerlines")
 
         # Waypoints section
         waypoints_box = layout.box()
@@ -100,6 +101,12 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
             car_col.prop(context.scene, "blosm_anim_start", text="Start Frame")
             car_col.prop(context.scene, "blosm_anim_end", text="End Frame")
             car_col.prop(context.scene, "blosm_lead_frames", text="Lead Frames")
+
+            trail_col = anim_box.column(align=True)
+            trail_col.label(text="Car Trail Custom Window", icon='CURVE_PATH')
+            trail_col.prop(context.scene, "blosm_car_trail_start_adjust", text="Start Adjust")
+            trail_col.prop(context.scene, "blosm_car_trail_end_adjust", text="End Adjust")
+            trail_col.prop(context.scene, "blosm_car_trail_tail_shift", text="Tail Shift")
 
         # Pre-flight confirmations (assets + render settings)
         preflight_box = layout.box()
@@ -191,5 +198,3 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
         layout.separator()
         layout.operator("blosm.fetch_route_map", text="Fetch Route & Map", icon='IMPORT')
         layout.operator("blosm.clean_and_clear", text="Clean & Clear", icon='TRASH')
-
-

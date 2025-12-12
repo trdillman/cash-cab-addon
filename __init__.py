@@ -133,6 +133,36 @@ def register():
         update=_update_animation_properties
     )
 
+    bpy.types.Scene.blosm_car_trail_start_adjust = bpy.props.FloatProperty(
+        name="CAR_TRAIL Start Adjust",
+        description="Driver trim: maps -1..1 to approx -0.01..0.01 for bevel_factor_start",
+        default=0.0,
+        min=-100.0,
+        max=100.0,
+        soft_min=-10.0,
+        soft_max=10.0,
+    )
+
+    bpy.types.Scene.blosm_car_trail_end_adjust = bpy.props.FloatProperty(
+        name="CAR_TRAIL End Adjust",
+        description="Driver trim: maps -1..1 to approx -0.01..0.01 for bevel_factor_end",
+        default=0.0,
+        min=-100.0,
+        max=100.0,
+        soft_min=-10.0,
+        soft_max=10.0,
+    )
+
+    bpy.types.Scene.blosm_car_trail_tail_shift = bpy.props.FloatProperty(
+        name="CAR_TRAIL Tail Shift",
+        description="Shared driver shift applied to both bevel_factor_start and bevel_factor_end",
+        default=0.0,
+        min=-100.0,
+        max=100.0,
+        soft_min=-10.0,
+        soft_max=10.0,
+    )
+
     bpy.types.Scene.blosm_route_end = bpy.props.IntProperty(
         name="Route Trace End Frame",
         description="Last frame of route trace animation (geometry nodes)",
@@ -172,6 +202,11 @@ def unregister():
         "blosm_anim_start",
         "blosm_anim_end",
         "blosm_lead_frames",
+        "blosm_route_start",
+        "blosm_route_end",
+        "blosm_car_trail_start_adjust",
+        "blosm_car_trail_end_adjust",
+        "blosm_car_trail_tail_shift",
         "blosm_base_start",
         "blosm_base_end",
     ):

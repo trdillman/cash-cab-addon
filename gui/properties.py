@@ -221,6 +221,15 @@ class BlosmProperties(bpy.types.PropertyGroup):
         default="500 Yonge St, Toronto",
     )
 
+    route_snap_to_road_centerline: bpy.props.BoolProperty(
+        name="Snap to road centerlines",
+        description=(
+            "After geocoding, snap the start/end points to the nearest OSM road "
+            "centerline using Overpass. Disable to use raw geocoder coordinates."
+        ),
+        default=True,
+    )
+
     # Route geocoded coordinates (stored by geocoding service)
     route_start_address_lat: bpy.props.FloatProperty(
         name="Start Latitude",
@@ -315,7 +324,7 @@ class BlosmProperties(bpy.types.PropertyGroup):
     ui_show_animation: bpy.props.BoolProperty(
         name="Show Animation Controls",
         description="Toggle visibility of animation control section in the CashCab panel",
-        default=True,
+        default=False,
     )
 
     ui_show_extend_city: bpy.props.BoolProperty(
