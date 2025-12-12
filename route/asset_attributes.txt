@@ -20,6 +20,12 @@
 
 [CN_TOWER]
 
+[MARKER_START]
+
+[MARKER_END]
+
+[Empty]
+
 [ASSET_ROADS]
 
 [Start]
