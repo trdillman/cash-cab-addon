@@ -10,7 +10,7 @@ import math
 import time
 import random
 from dataclasses import dataclass
-from typing import List, Sequence, Tuple
+from typing import List, Sequence, Tuple, Optional
 from urllib import error, parse, request
 
 # Import configuration
@@ -25,6 +25,10 @@ _OVERPASS_INTERVAL = DEFAULT_CONFIG.api.nominatim_min_interval_s
 _OVERPASS_TIMEOUT = DEFAULT_CONFIG.api.overpass_query_timeout
 _MAX_OVERPASS_ATTEMPTS = DEFAULT_CONFIG.api.overpass_max_retries
 _last_nominatim_request = 0.0
+_last_overpass_request = 0.0
+
+# Global toggle that route operators can override per-call based on addon settings.
+SNAP_TO_ROAD_CENTERLINE: bool = True
 
 
 class RouteServiceError(RuntimeError):
@@ -69,6 +73,19 @@ def _throttle_nominatim():
     _last_nominatim_request = time.monotonic()
 
 
+def _throttle_overpass():
+    """Basic Overpass rate limiting shared with snapping helper.
+
+    Uses the same interval as Nominatim by default for simplicity.
+    """
+    global _last_overpass_request
+    now = time.monotonic()
+    wait = _OVERPASS_INTERVAL - (now - _last_overpass_request)
+    if wait > 0:
+        time.sleep(wait)
+    _last_overpass_request = time.monotonic()
+
+
 def _request_json(url: str, user_agent: str, timeout: float = 30.0, throttle: bool = False) -> dict:
     if throttle:
         _throttle_nominatim()
@@ -89,16 +106,36 @@ def _request_json(url: str, user_agent: str, timeout: float = 30.0, throttle: bo
 
 
 def geocode(address: str, user_agent: str) -> GeocodeResult:
-    """Geocode a human-readable address via Nominatim.
+    """Geocode a human-readable address via Nominatim, with optional snapping.
+
+    Behaviour:
+    - If the user enters a raw \"lat, lon\" string, treat it as coordinates
+      directly (no Nominatim call) and optionally snap to the nearest road.
+    - Otherwise, call Nominatim to geocode the address, then optionally snap
+      the resulting point to the nearest road centerline.
 
     Raises RouteServiceError with a user-friendly message when no results are
-    returned or the response is malformed. The original input address is
+    returned or the response is malformed. The original input string is
     included so the UI can show actionable guidance.
     """
     if not address or not address.strip():
         raise RouteServiceError("Address is empty. Please enter an address.")
+
+    original = address.strip()
+
+    # 1) Support raw \"lat, lon\" input directly (no Nominatim lookup).
+    coords = _parse_latlon_input(original)
+    if coords is not None:
+        lat, lon = coords
+        if SNAP_TO_ROAD_CENTERLINE:
+            snapped = _snap_to_road_centerline(lat, lon, user_agent=user_agent)
+            if snapped is not None:
+                lat, lon = snapped
+        return GeocodeResult(address=original, lat=lat, lon=lon, display_name=original)
+
+    # 2) Normal path: geocode via Nominatim, then snap result to road centerline.
     query = parse.urlencode({
-        "q": address,
+        "q": original,
         "format": "json",
         "limit": 1,
         "countrycodes": DEFAULT_CONFIG.api.nominatim_country_codes
@@ -108,7 +145,7 @@ def geocode(address: str, user_agent: str) -> GeocodeResult:
     if not data:
         # Explicit, user-facing guidance for bad/unknown addresses
         raise RouteServiceError(
-            f"Address not found: \"{address}\". Please check the spelling or try a nearby intersection."
+            f"Address not found: \"{original}\". Please check the spelling or try a nearby intersection."
         )
     entry = data[0]
     try:
@@ -116,9 +153,15 @@ def geocode(address: str, user_agent: str) -> GeocodeResult:
         lon = float(entry["lon"])
     except (KeyError, ValueError) as exc:
         raise RouteServiceError(
-            f"Could not read geocoding result for \"{address}\". Please adjust and try again."
+            f"Could not read geocoding result for \"{original}\". Please adjust and try again."
         ) from exc
-    return GeocodeResult(address=address, lat=lat, lon=lon, display_name=entry.get("display_name", address))
+
+    if SNAP_TO_ROAD_CENTERLINE:
+        snapped = _snap_to_road_centerline(lat, lon, user_agent=user_agent)
+        if snapped is not None:
+            lat, lon = snapped
+
+    return GeocodeResult(address=original, lat=lat, lon=lon, display_name=entry.get("display_name", original))
 
 
 def decode_polyline(value: str, precision: int = 5) -> List[Tuple[float, float]]:
@@ -235,6 +278,191 @@ def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return EARTH_RADIUS_M * c
+
+
+def _parse_latlon_input(text: str) -> Optional[Tuple[float, float]]:
+    """Parse a simple \"lat, lon\" string into a coordinate pair.
+
+    Returns (lat, lon) if parsing succeeds and values are in a reasonable range,
+    otherwise returns None.
+    """
+    if not text:
+        return None
+    parts = [p.strip() for p in text.split(",")]
+    if len(parts) != 2:
+        return None
+    try:
+        lat = float(parts[0])
+        lon = float(parts[1])
+    except ValueError:
+        return None
+
+    if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+        return None
+    return lat, lon
+
+
+def _to_local_xy(lat: float, lon: float, lat0: float) -> Tuple[float, float]:
+    """Approximate lon/lat (deg) to local metres around reference latitude.
+
+    This is sufficient for short distances like snapping to the nearest road.
+    """
+    r = EARTH_RADIUS_M
+    phi = math.radians(lat)
+    lam = math.radians(lon)
+    phi0 = math.radians(lat0)
+    x = r * lam * math.cos(phi0)
+    y = r * phi
+    return x, y
+
+
+def _from_local_xy(x: float, y: float, lat0: float) -> Tuple[float, float]:
+    """Inverse of _to_local_xy."""
+    r = EARTH_RADIUS_M
+    phi0 = math.radians(lat0)
+    phi = y / r
+    lam = x / (r * math.cos(phi0)) if abs(math.cos(phi0)) > 1e-8 else 0.0
+    lat = math.degrees(phi)
+    lon = math.degrees(lam)
+    return lat, lon
+
+
+def _project_point_to_segment(
+    px: float, py: float, ax: float, ay: float, bx: float, by: float
+) -> Tuple[float, float, float]:
+    """Return (qx, qy, t) for closest point Q on segment AB to P in 2D."""
+    vx = bx - ax
+    vy = by - ay
+    wx = px - ax
+    wy = py - ay
+
+    seg_len2 = vx * vx + vy * vy
+    if seg_len2 == 0.0:
+        return ax, ay, 0.0
+
+    t = (wx * vx + wy * vy) / seg_len2
+    if t < 0.0:
+        t = 0.0
+    elif t > 1.0:
+        t = 1.0
+    qx = ax + t * vx
+    qy = ay + t * vy
+    return qx, qy, t
+
+
+def _overpass_request_json(body: str, user_agent: str) -> Optional[dict]:
+    """Execute a small JSON Overpass query using the configured servers.
+
+    Returns parsed JSON on success, or None on failure.
+    """
+    servers = DEFAULT_CONFIG.api.overpass_servers
+    if not servers:
+        return None
+
+    # Ensure we respect a basic interval between Overpass calls.
+    _throttle_overpass()
+
+    payload = parse.urlencode({"data": body}).encode("utf-8")
+    headers = {"User-Agent": user_agent or DEFAULT_CONFIG.api.nominatim_user_agent}
+
+    last_error: Optional[Exception] = None
+    for base in servers:
+        url = base.rstrip("/") + "/api/interpreter"
+        req = request.Request(url, data=payload, headers=headers)
+        try:
+            with request.urlopen(req, timeout=_OVERPASS_TIMEOUT) as resp:
+                status = getattr(resp, "status", 200)
+                if status != 200:
+                    continue
+                raw = resp.read().decode("utf-8")
+                try:
+                    return json.loads(raw)
+                except json.JSONDecodeError:
+                    # Try next server on JSON issues as well
+                    last_error = None
+                    continue
+        except error.URLError as exc:
+            last_error = exc
+            continue
+        except IncompleteRead as exc:
+            last_error = exc
+            continue
+
+    # If everything failed, return None – snapping will be skipped.
+    if last_error is not None:
+        print(f"[BLOSM] WARN Overpass snap query failed: {last_error}")
+    return None
+
+
+def _snap_to_road_centerline(
+    lat: float,
+    lon: float,
+    user_agent: str,
+    radius_m: float = 150.0,
+    max_snap_m: float = 60.0,
+) -> Optional[Tuple[float, float]]:
+    """Snap a point to the nearest road centerline using Overpass.
+
+    Returns (snapped_lat, snapped_lon) or None if snapping is unavailable.
+    """
+    # Build a minimal Overpass query around the point for highway=* ways.
+    query = (
+        "[out:json][timeout:{timeout}];\n"
+        "(\n"
+        "  way(around:{radius},{lat},{lon})[\"highway\"];\n"
+        ");\n"
+        "(._;>;);\n"
+        "out body;\n"
+    ).format(timeout=_OVERPASS_TIMEOUT, radius=int(radius_m), lat=lat, lon=lon)
+
+    data = _overpass_request_json(query, user_agent=user_agent)
+    if not data:
+        return None
+
+    elements = data.get("elements") or []
+    nodes = {
+        el["id"]: (float(el["lon"]), float(el["lat"]))  # lon, lat
+        for el in elements
+        if el.get("type") == "node" and "lon" in el and "lat" in el
+    }
+    ways = [el for el in elements if el.get("type") == "way" and el.get("nodes")]
+
+    if not nodes or not ways:
+        return None
+
+    # Prepare local metric projection anchored at the query latitude.
+    px, py = _to_local_xy(lat, lon, lat0=lat)
+
+    best: Optional[Tuple[float, float, float]] = None  # (dist_m, s_lat, s_lon)
+
+    for way in ways:
+        node_ids = way.get("nodes", [])
+        coords_ll = [nodes.get(nid) for nid in node_ids if nid in nodes]
+        if len(coords_ll) < 2:
+            continue
+
+        # Work segment-by-segment in local metres
+        coords_xy = [_to_local_xy(c[1], c[0], lat0=lat) for c in coords_ll]  # c = (lon, lat)
+
+        for (ax, ay), (bx, by) in zip(coords_xy, coords_xy[1:]):
+            qx, qy, _ = _project_point_to_segment(px, py, ax, ay, bx, by)
+            dx = qx - px
+            dy = qy - py
+            dist = math.hypot(dx, dy)
+            s_lat, s_lon = _from_local_xy(qx, qy, lat0=lat)
+
+            cand = (dist, s_lat, s_lon)
+            if best is None or cand[0] < best[0]:
+                best = cand
+
+    if best is None:
+        return None
+
+    dist_m, s_lat, s_lon = best
+    # Only accept reasonable shifts; otherwise keep original point.
+    if dist_m > max_snap_m:
+        return None
+    return s_lat, s_lon
 
 
 def bbox_size(bbox: Tuple[float, float, float, float]) -> Tuple[float, float]:

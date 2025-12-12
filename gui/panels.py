@@ -36,6 +36,7 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
         # Address inputs
         col = layout.column(align=True)
         col.prop(addon, "route_start_address", text="Start Address")
+        col.prop(addon, "route_snap_to_road_centerline", text="Snap to road centerlines")
 
         # Waypoints section
         waypoints_box = layout.box()
@@ -112,7 +113,6 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
 
             if not has_import_state:
                 body.label(text="Run Fetch Route and Map first to enable extend.", icon='INFO')
-
         # Pre-flight confirmations (assets + render settings)
         preflight_box = layout.box()
         preflight_box.label(text="Pre-flight Checks", icon='INFO')
@@ -203,4 +203,3 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
         layout.separator()
         layout.operator("blosm.fetch_route_map", text="Fetch Route & Map", icon='IMPORT')
         layout.operator("blosm.clean_and_clear", text="Clean & Clear", icon='TRASH')
-

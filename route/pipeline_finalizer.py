@@ -308,7 +308,14 @@ def _configure_car_trail_drivers(
         return False
 
     if scene is None:
-        scene = getattr(bpy.context, "scene", None)
+        try:
+            scenes = getattr(car_obj, "users_scene", None) or []
+            if scenes:
+                scene = scenes[0]
+        except Exception:
+            scene = None
+        if scene is None:
+            scene = getattr(bpy.context, "scene", None)
 
     follow = next((c for c in car_obj.constraints if c.type == 'FOLLOW_PATH'), None)
     if follow is None:
@@ -336,27 +343,32 @@ def _configure_car_trail_drivers(
             target.id = car_obj
             target.data_path = f'constraints["{follow.name}"].offset_factor'
 
+            if scene is None:
+                scene = getattr(bpy.context, "scene", None)
             if scene is not None:
-                start_adj_var = driver.variables.new()
-                start_adj_var.name = 'start_adj'
-                start_adj_target = start_adj_var.targets[0]
-                start_adj_target.id_type = 'SCENE'
-                start_adj_target.id = scene
-                start_adj_target.data_path = "blosm_car_trail_start_adjust"
+                try:
+                    start_adj_var = driver.variables.new()
+                    start_adj_var.name = 'start_adj'
+                    start_adj_target = start_adj_var.targets[0]
+                    start_adj_target.id_type = 'SCENE'
+                    start_adj_target.id = scene
+                    start_adj_target.data_path = "blosm_car_trail_start_adjust"
 
-                end_adj_var = driver.variables.new()
-                end_adj_var.name = 'end_adj'
-                end_adj_target = end_adj_var.targets[0]
-                end_adj_target.id_type = 'SCENE'
-                end_adj_target.id = scene
-                end_adj_target.data_path = "blosm_car_trail_end_adjust"
+                    end_adj_var = driver.variables.new()
+                    end_adj_var.name = 'end_adj'
+                    end_adj_target = end_adj_var.targets[0]
+                    end_adj_target.id_type = 'SCENE'
+                    end_adj_target.id = scene
+                    end_adj_target.data_path = "blosm_car_trail_end_adjust"
 
-                tail_shift_var = driver.variables.new()
-                tail_shift_var.name = 'tail_shift'
-                tail_shift_target = tail_shift_var.targets[0]
-                tail_shift_target.id_type = 'SCENE'
-                tail_shift_target.id = scene
-                tail_shift_target.data_path = "blosm_car_trail_tail_shift"
+                    tail_shift_var = driver.variables.new()
+                    tail_shift_var.name = 'tail_shift'
+                    tail_shift_target = tail_shift_var.targets[0]
+                    tail_shift_target.id_type = 'SCENE'
+                    tail_shift_target.id = scene
+                    tail_shift_target.data_path = "blosm_car_trail_tail_shift"
+                except Exception as exc:
+                    print(f"[BLOSM] WARN car trail scale driver setup failed: {exc}")
             created = True
         except Exception as exc:
             print(f"[BLOSM] WARN car trail driver setup failed for {prop}: {exc}")
