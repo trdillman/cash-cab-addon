@@ -14,8 +14,30 @@
 # MOD[ModifierName]:property = 0
 
 
+[CAR_TRAIL]
+
 [ASSET_BEAM]
 
 [CN_TOWER]
 
-[CAR_TRAIL]
+[MARKER_START]
+
+[MARKER_END]
+
+[Empty]
+
+[ASSET_ROADS]
+
+[Start]
+
+[End]
+
+[Lake_Mesh_Cutter]
+
+[Water_Plane_Result]
+
+[Water_Plane_Emissive]
+
+[Ground_Plane_Result]
+
+[Islands_Mesh]

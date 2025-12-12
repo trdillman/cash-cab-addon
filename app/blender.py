@@ -445,6 +445,17 @@ class BlenderApp(BaseApp):
         """
         prefs = context.preferences.addons
         j = os.path.join
+        env_data_dir = os.environ.get("BLOSM_DATA_DIR")
+        if env_data_dir:
+            env_data_dir = os.path.realpath(bpy.path.abspath(env_data_dir))
+            try:
+                os.makedirs(env_data_dir, exist_ok=True)
+            except Exception as exc:
+                raise Exception(f"BLOSM_DATA_DIR is not writable: {env_data_dir} ({exc})")
+            if not os.path.isdir(env_data_dir):
+                raise Exception(f"BLOSM_DATA_DIR is not a directory: {env_data_dir}")
+            self.dataDir = env_data_dir
+            return
         if addonName in prefs:
             dataDir = prefs[addonName].preferences.dataDir
             if not dataDir:

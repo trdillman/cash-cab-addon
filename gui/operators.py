@@ -88,7 +88,7 @@ class BLOSM_OT_SetViewportClip(bpy.types.Operator):
     bl_description = "Set clip start/end ranges for all 3D viewports to improve far-distance visibility"
     bl_options = {'REGISTER', 'UNDO'}
 
-    clip_start = bpy.props.FloatProperty(
+    clip_start: bpy.props.FloatProperty(
         name="Clip Start",
         description="Viewport clip start distance",
         default=1.0,
@@ -96,7 +96,7 @@ class BLOSM_OT_SetViewportClip(bpy.types.Operator):
         soft_max=1000.0
     )
 
-    clip_end = bpy.props.FloatProperty(
+    clip_end: bpy.props.FloatProperty(
         name="Clip End",
         description="Viewport clip end distance",
         default=1000000.0,
@@ -161,5 +161,4 @@ class BLOSM_OT_AssetsUpdateNotice(bpy.types.Operator):
     def execute(self, context):
         self.report({'INFO'}, "Updated assets confirmation acknowledged")
         return {'FINISHED'}
-
 

@@ -54,6 +54,32 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
         layout.label(text="Auto-importing: Roads, Buildings, Water, RouteCam", icon='IMPORT')
         layout.prop(addon, "route_create_preview_animation", text="Create Animated Route & Assets")
 
+        # Animation settings - grouped in a collapsible tab-like box
+        anim_box = layout.box()
+        header = anim_box.row()
+        header.prop(
+            addon,
+            "ui_show_animation",
+            text="",
+            icon='TRIA_DOWN' if addon.ui_show_animation else 'TRIA_RIGHT',
+            emboss=False,
+        )
+        header.label(text="Animation Controls", icon='TIME')
+
+        if addon.ui_show_animation:
+            # Car animation
+            car_col = anim_box.column(align=True)
+            car_col.label(text="Car Animation:", icon='AUTO')
+            car_col.prop(context.scene, "blosm_anim_start", text="Start Frame")
+            car_col.prop(context.scene, "blosm_anim_end", text="End Frame")
+            car_col.prop(context.scene, "blosm_lead_frames", text="Lead Frames")
+
+            trail_col = anim_box.column(align=True)
+            trail_col.label(text="Car Trail Custom Window", icon='CURVE_PATH')
+            trail_col.prop(context.scene, "blosm_car_trail_start_adjust", text="Start Adjust")
+            trail_col.prop(context.scene, "blosm_car_trail_end_adjust", text="End Adjust")
+            trail_col.prop(context.scene, "blosm_car_trail_tail_shift", text="Tail Shift")
+
         # City extension controls in a collapsible section (similar to Animation Controls)
         extend_box = layout.box()
         header = extend_box.row()
@@ -86,20 +112,6 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
 
             if not has_import_state:
                 body.label(text="Run Fetch Route and Map first to enable extend.", icon='INFO')
-
-        # Animation settings - grouped in a collapsible tab-like box
-        anim_box = layout.box()
-        header = anim_box.row()
-        header.prop(addon, "ui_show_animation", text="", icon='TRIA_DOWN' if addon.ui_show_animation else 'TRIA_RIGHT', emboss=False)
-        header.label(text="Animation Controls", icon='TIME')
-
-        if addon.ui_show_animation:
-            # Car animation
-            car_col = anim_box.column(align=True)
-            car_col.label(text="Car Animation:", icon='AUTO')
-            car_col.prop(context.scene, "blosm_anim_start", text="Start Frame")
-            car_col.prop(context.scene, "blosm_anim_end", text="End Frame")
-            car_col.prop(context.scene, "blosm_lead_frames", text="Lead Frames")
 
         # Pre-flight confirmations (assets + render settings)
         preflight_box = layout.box()
@@ -191,5 +203,4 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
         layout.separator()
         layout.operator("blosm.fetch_route_map", text="Fetch Route & Map", icon='IMPORT')
         layout.operator("blosm.clean_and_clear", text="Clean & Clear", icon='TRASH')
-
 

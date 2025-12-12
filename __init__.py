@@ -159,6 +159,36 @@ def register():
         default=""
     )
 
+    bpy.types.Scene.blosm_car_trail_start_adjust = bpy.props.FloatProperty(
+        name="CAR_TRAIL Start Adjust",
+        description="Car trail window trim for bevel_factor_start",
+        default=0.0,
+        min=-100.0,
+        max=100.0,
+        soft_min=-10.0,
+        soft_max=10.0,
+    )
+
+    bpy.types.Scene.blosm_car_trail_end_adjust = bpy.props.FloatProperty(
+        name="CAR_TRAIL End Adjust",
+        description="Car trail window trim for bevel_factor_end",
+        default=0.0,
+        min=-100.0,
+        max=100.0,
+        soft_min=-10.0,
+        soft_max=10.0,
+    )
+
+    bpy.types.Scene.blosm_car_trail_tail_shift = bpy.props.FloatProperty(
+        name="CAR_TRAIL Tail Shift",
+        description="Shared driver shift applied to both bevel_factor_start and bevel_factor_end",
+        default=0.0,
+        min=-100.0,
+        max=100.0,
+        soft_min=-10.0,
+        soft_max=10.0,
+    )
+
     print("[CashCab] Route import addon registered")
 
 
@@ -172,8 +202,13 @@ def unregister():
         "blosm_anim_start",
         "blosm_anim_end",
         "blosm_lead_frames",
+        "blosm_route_start",
+        "blosm_route_end",
         "blosm_base_start",
         "blosm_base_end",
+        "blosm_car_trail_start_adjust",
+        "blosm_car_trail_end_adjust",
+        "blosm_car_trail_tail_shift",
     ):
         if hasattr(bpy.types.Scene, attr):
             try:

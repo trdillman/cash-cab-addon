@@ -30,8 +30,8 @@ CN_TOWER_OBJECT_NAME = "CN_TOWER"
 CN_TOWER_ASSET_BLEND = route_assets.ASSET_DIRECTORY / "ASSET_CNTower.blend"
 CAR_TRAIL_NODE_GROUP_NAME = "ASSET_CAR_TRAIL"
 CAR_TRAIL_BEVEL_DRIVERS = (
-    ("bevel_factor_end", "offset_factor - 0.0055"),
-    ("bevel_factor_start", "offset_factor - 0.075"),
+    ("bevel_factor_end", "offset_factor - 0.0055 - end_adj * 0.01 - tail_shift * 0.01"),
+    ("bevel_factor_start", "offset_factor - 0.075 - start_adj * 0.01 - tail_shift * 0.01"),
 )
 ROUTE_ROLE_TAG = "route_curve_osm"
 CAR_TRAIL_ROLE_TAG = "car_trail"
@@ -298,9 +298,16 @@ def _find_route_curve(scene: Optional[bpy.types.Scene]) -> Optional[bpy.types.Ob
     return bpy.data.objects.get("ROUTE") or bpy.data.objects.get("Route")
 
 
-def _configure_car_trail_drivers(curve_data: bpy.types.Curve, car_obj: Optional[bpy.types.Object]) -> bool:
+def _configure_car_trail_drivers(
+    curve_data: bpy.types.Curve,
+    car_obj: Optional[bpy.types.Object],
+    scene: Optional[bpy.types.Scene] = None,
+) -> bool:
     if curve_data is None or car_obj is None:
         return False
+
+    if scene is None:
+        scene = getattr(bpy.context, "scene", None)
 
     follow = next((c for c in car_obj.constraints if c.type == 'FOLLOW_PATH'), None)
     if follow is None:
@@ -327,6 +334,28 @@ def _configure_car_trail_drivers(curve_data: bpy.types.Curve, car_obj: Optional[
             target = var.targets[0]
             target.id = car_obj
             target.data_path = f'constraints["{follow.name}"].offset_factor'
+
+            if scene is not None:
+                start_adj_var = driver.variables.new()
+                start_adj_var.name = 'start_adj'
+                start_adj_target = start_adj_var.targets[0]
+                start_adj_target.id_type = 'SCENE'
+                start_adj_target.id = scene
+                start_adj_target.data_path = "blosm_car_trail_start_adjust"
+
+                end_adj_var = driver.variables.new()
+                end_adj_var.name = 'end_adj'
+                end_adj_target = end_adj_var.targets[0]
+                end_adj_target.id_type = 'SCENE'
+                end_adj_target.id = scene
+                end_adj_target.data_path = "blosm_car_trail_end_adjust"
+
+                tail_shift_var = driver.variables.new()
+                tail_shift_var.name = 'tail_shift'
+                tail_shift_target = tail_shift_var.targets[0]
+                tail_shift_target.id_type = 'SCENE'
+                tail_shift_target.id = scene
+                tail_shift_target.data_path = "blosm_car_trail_tail_shift"
             created = True
         except Exception as exc:
             print(f"[BLOSM] WARN car trail driver setup failed for {prop}: {exc}")
@@ -825,7 +854,7 @@ def _build_car_trail_from_route(scene: Optional[bpy.types.Scene]) -> bpy.types.O
     else:
         print("[BLOSM] WARN car trail node group unavailable")
 
-    _configure_car_trail_drivers(car_trail.data, car_obj)
+    _configure_car_trail_drivers(car_trail.data, car_obj, scene)
 
     data = getattr(car_trail, "data", None)
     if data is not None and getattr(data, "bevel_object", None) is None:
