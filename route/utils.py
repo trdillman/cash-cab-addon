@@ -7,6 +7,7 @@ import gzip
 import xml.etree.ElementTree as ET
 from http.client import IncompleteRead
 import math
+import re
 import time
 import random
 from dataclasses import dataclass
@@ -29,6 +30,23 @@ _last_overpass_request = 0.0
 
 # Global toggle that route operators can override per-call based on addon settings.
 SNAP_TO_ROAD_CENTERLINE: bool = True
+
+# Prefer snapping to primary road classes to avoid alleys/service roads near buildings.
+_SNAP_HIGHWAY_ALLOWLIST = (
+    "motorway",
+    "trunk",
+    "primary",
+    "secondary",
+    "tertiary",
+    "unclassified",
+    "residential",
+    "living_street",
+    "motorway_link",
+    "trunk_link",
+    "primary_link",
+    "secondary_link",
+    "tertiary_link",
+)
 
 
 class RouteServiceError(RuntimeError):
@@ -138,6 +156,7 @@ def geocode(address: str, user_agent: str) -> GeocodeResult:
         "q": original,
         "format": "json",
         "limit": 1,
+        "addressdetails": 1,
         "countrycodes": DEFAULT_CONFIG.api.nominatim_country_codes
     })
     url = f"https://nominatim.openstreetmap.org/search?{query}"
@@ -157,7 +176,19 @@ def geocode(address: str, user_agent: str) -> GeocodeResult:
         ) from exc
 
     if SNAP_TO_ROAD_CENTERLINE:
-        snapped = _snap_to_road_centerline(lat, lon, user_agent=user_agent)
+        street_name = None
+        try:
+            addr_details = entry.get("address") or {}
+            if isinstance(addr_details, dict):
+                street_name = (
+                    addr_details.get("road")
+                    or addr_details.get("pedestrian")
+                    or addr_details.get("footway")
+                    or addr_details.get("street")
+                )
+        except Exception:
+            street_name = None
+        snapped = _snap_to_road_centerline(lat, lon, user_agent=user_agent, street_name=street_name)
         if snapped is not None:
             lat, lon = snapped
 
@@ -398,6 +429,7 @@ def _snap_to_road_centerline(
     lat: float,
     lon: float,
     user_agent: str,
+    street_name: Optional[str] = None,
     radius_m: float = 150.0,
     max_snap_m: float = 60.0,
 ) -> Optional[Tuple[float, float]]:
@@ -405,17 +437,51 @@ def _snap_to_road_centerline(
 
     Returns (snapped_lat, snapped_lon) or None if snapping is unavailable.
     """
-    # Build a minimal Overpass query around the point for highway=* ways.
-    query = (
-        "[out:json][timeout:{timeout}];\n"
-        "(\n"
-        "  way(around:{radius},{lat},{lon})[\"highway\"];\n"
-        ");\n"
-        "(._;>;);\n"
-        "out body;\n"
-    ).format(timeout=_OVERPASS_TIMEOUT, radius=int(radius_m), lat=lat, lon=lon)
+    allow_re = "|".join(re.escape(v) for v in _SNAP_HIGHWAY_ALLOWLIST)
 
-    data = _overpass_request_json(query, user_agent=user_agent)
+    def _build_query(require_name_match: bool) -> str:
+        name_filter = ""
+        if require_name_match and street_name:
+            # Case-insensitive partial match; avoids snapping to nearby service/alley roads.
+            # Note: Overpass uses regex syntax; escape user-facing names defensively.
+            street_re = re.escape(street_name.strip())
+            if street_re:
+                name_filter = f"[\"name\"~\"{street_re}\",i]"
+        return (
+            "[out:json][timeout:{timeout}];\n"
+            "(\n"
+            "  way(around:{radius},{lat},{lon})"
+            "[\"highway\"~\"^({allow})$\"]{name_filter};\n"
+            ");\n"
+            "(._;>;);\n"
+            "out body;\n"
+        ).format(
+            timeout=_OVERPASS_TIMEOUT,
+            radius=int(radius_m),
+            lat=lat,
+            lon=lon,
+            allow=allow_re,
+            name_filter=name_filter,
+        )
+
+    def _build_fallback_query_any_highway() -> str:
+        return (
+            "[out:json][timeout:{timeout}];\n"
+            "(\n"
+            "  way(around:{radius},{lat},{lon})[\"highway\"];\n"
+            ");\n"
+            "(._;>;);\n"
+            "out body;\n"
+        ).format(timeout=_OVERPASS_TIMEOUT, radius=int(radius_m), lat=lat, lon=lon)
+
+    # Try: name-aware allowlist -> allowlist -> any highway.
+    data = None
+    if street_name and street_name.strip():
+        data = _overpass_request_json(_build_query(require_name_match=True), user_agent=user_agent)
+    if not data:
+        data = _overpass_request_json(_build_query(require_name_match=False), user_agent=user_agent)
+    if not data:
+        data = _overpass_request_json(_build_fallback_query_any_highway(), user_agent=user_agent)
     if not data:
         return None
 
