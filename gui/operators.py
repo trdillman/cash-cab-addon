@@ -163,6 +163,56 @@ class BLOSM_OT_AssetsUpdateNotice(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class BLOSM_OT_GenerateStreetLabels(bpy.types.Operator):
+    """Generate STREET_LABELS text objects for visible road names (idempotent)."""
+
+    bl_idname = "blosm.generate_street_labels"
+    bl_label = "Generate Street Labels"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        scene = getattr(context, "scene", None)
+        if scene is None:
+            self.report({'ERROR'}, "No active scene")
+            return {'CANCELLED'}
+
+        try:
+            from ..road import street_labels
+
+            created = int(street_labels.generate_street_labels(scene))
+            self.report({'INFO'}, f"Street labels generated: {created}")
+            return {'FINISHED'}
+        except Exception as exc:
+            print(f"[BLOSM] WARN street labels: generate failed: {exc}")
+            self.report({'WARNING'}, f"Street labels generate failed: {exc}")
+            return {'CANCELLED'}
+
+
+class BLOSM_OT_ClearStreetLabels(bpy.types.Operator):
+    """Clear STREET_LABELS text objects."""
+
+    bl_idname = "blosm.clear_street_labels"
+    bl_label = "Clear Street Labels"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        scene = getattr(context, "scene", None)
+        if scene is None:
+            self.report({'ERROR'}, "No active scene")
+            return {'CANCELLED'}
+
+        try:
+            from ..road import street_labels
+
+            removed = int(street_labels.clear_street_labels(scene))
+            self.report({'INFO'}, f"Street labels cleared: {removed}")
+            return {'FINISHED'}
+        except Exception as exc:
+            print(f"[BLOSM] WARN street labels: clear failed: {exc}")
+            self.report({'WARNING'}, f"Street labels clear failed: {exc}")
+            return {'CANCELLED'}
+
+
 class BLOSM_OT_ApplyUTurnTrim(bpy.types.Operator):
     """Apply or restore start/end U-turn trimming on the ROUTE curve."""
 
