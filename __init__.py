@@ -5,7 +5,7 @@ Import routes and OpenStreetMap data for animation.
 
 bl_info = {
     "name": "CashCab Route Import",
-  "version": (2, 2, 0),
+  "version": (3, 0, 1),
     "blender": (4, 5, 0),
     "location": "View3D > Sidebar > CashCab",
     "description": "Fetch routes and import OpenStreetMap data with Toronto Islands mesh import for CashCab animation",
