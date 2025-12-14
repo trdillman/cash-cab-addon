@@ -1,4 +1,6 @@
 import unittest
+import tempfile
+from pathlib import Path
 
 import bpy
 
@@ -47,3 +49,25 @@ class TestStreetLabels(unittest.TestCase):
         street_labels.set_street_labels_visible(scene, False)
         self.assertTrue(coll.hide_viewport)
         self.assertTrue(coll.hide_render)
+
+    def test_parse_osm_extracts_named_ways(self):
+        _load_local_addon()
+        import cash_cab_addon.road.street_labels as street_labels
+
+        xml = """<?xml version='1.0' encoding='UTF-8'?>
+<osm version="0.6" generator="unit-test">
+  <node id="1" lat="43.0" lon="-79.0" />
+  <node id="2" lat="43.1" lon="-79.1" />
+  <way id="10">
+    <nd ref="1" />
+    <nd ref="2" />
+    <tag k="highway" v="primary" />
+    <tag k="name" v="Queen Street West" />
+  </way>
+</osm>
+"""
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "test.osm"
+            p.write_text(xml, encoding="utf-8")
+            ways = street_labels._parse_osm_named_ways(str(p))
+            self.assertTrue(any(w[0] == "Queen Street West" for w in ways))

@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import radians
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
+import os
+import xml.etree.ElementTree as ET
 
 import bpy
 from mathutils import Vector
@@ -115,6 +117,8 @@ def _road_name_from_object(obj: bpy.types.Object) -> Optional[str]:
     if not n:
         return None
     low = n.lower()
+    if low in {"asset_roads", "roads"}:
+        return None
     if low.startswith(("profile_", "profile-roads", "profile_roads", "way_profiles")):
         return None
     if "road" in low and len(n) <= 64:
@@ -156,6 +160,99 @@ def _iter_candidate_road_objects(scene: bpy.types.Scene) -> Iterable[bpy.types.O
         low = (obj.name or "").lower()
         if "road" in low and "profile" not in low and "way_profile" not in low:
             yield obj
+
+
+def _try_get_osm_dir(scene: bpy.types.Scene) -> Optional[str]:
+    # Try explicit osmFilepath first (if present).
+    addon = getattr(scene, "blosm", None)
+    if addon is not None:
+        p = getattr(addon, "osmFilepath", "") or ""
+        if p and os.path.exists(p):
+            return os.path.dirname(os.path.realpath(p))
+
+    try:
+        from ..app import blender as blenderApp
+
+        app_obj = blenderApp.app
+        data_dir = getattr(app_obj, "dataDir", None)
+        osm_subdir = getattr(app_obj, "osmDir", "osm")
+        if data_dir:
+            cand = os.path.join(str(data_dir), str(osm_subdir))
+            if os.path.isdir(cand):
+                return cand
+    except Exception:
+        pass
+    return None
+
+
+def _find_latest_osm_file(scene: bpy.types.Scene) -> Optional[str]:
+    osm_dir = _try_get_osm_dir(scene)
+    if not osm_dir:
+        return None
+    try:
+        osm_files = [
+            os.path.join(osm_dir, f)
+            for f in os.listdir(osm_dir)
+            if f.lower().endswith(".osm") and os.path.isfile(os.path.join(osm_dir, f))
+        ]
+        if not osm_files:
+            return None
+        osm_files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+        return osm_files[0]
+    except Exception:
+        return None
+
+
+def _parse_osm_named_ways(osm_path: str) -> List[Tuple[str, Optional[str], float, float]]:
+    """Parse an .osm XML file and return (name, highway, lat, lon) for named ways.
+
+    Uses average node lat/lon as a cheap centroid.
+    """
+    tree = ET.parse(osm_path)
+    root = tree.getroot()
+
+    nodes: Dict[str, Tuple[float, float]] = {}
+    for n in root.findall("node"):
+        nid = n.get("id")
+        lat = n.get("lat")
+        lon = n.get("lon")
+        if not nid or lat is None or lon is None:
+            continue
+        try:
+            nodes[nid] = (float(lat), float(lon))
+        except Exception:
+            continue
+
+    out: List[Tuple[str, Optional[str], float, float]] = []
+    for w in root.findall("way"):
+        tags = {t.get("k"): t.get("v") for t in w.findall("tag") if t.get("k")}
+        name = (tags.get("name") or "").strip()
+        if not name:
+            continue
+        highway = tags.get("highway")
+
+        nds = [nd.get("ref") for nd in w.findall("nd") if nd.get("ref")]
+        coords = [nodes.get(ref) for ref in nds if ref in nodes]
+        coords = [c for c in coords if c is not None]
+        if len(coords) < 2:
+            continue
+        lat_avg = sum(c[0] for c in coords) / float(len(coords))
+        lon_avg = sum(c[1] for c in coords) / float(len(coords))
+        out.append((name, highway, float(lat_avg), float(lon_avg)))
+    return out
+
+
+def _project_latlon_to_world_xy(scene: bpy.types.Scene, lat: float, lon: float) -> Optional[Tuple[float, float]]:
+    try:
+        from ..app import blender as blenderApp
+
+        proj = getattr(blenderApp.app, "projection", None)
+        if proj is None or not hasattr(proj, "fromGeographic"):
+            return None
+        x, y, _ = proj.fromGeographic(float(lat), float(lon))
+        return float(x), float(y)
+    except Exception:
+        return None
 
 
 def _road_candidates(scene: bpy.types.Scene) -> List[_RoadCandidate]:
@@ -251,39 +348,122 @@ def generate_street_labels(scene: bpy.types.Scene) -> int:
     # Idempotent behavior: clear first.
     clear_street_labels(scene)
 
-    candidates = _road_candidates(scene)
-    if not candidates:
-        _log_warn("No candidate road objects found; nothing to label.")
-        return 0
-
-    # Prefer major roads if we have highway tags; otherwise keep all named candidates.
-    majors = [c for c in candidates if (c.highway in _MAJOR_HIGHWAYS)]
-    picked = majors if majors else candidates
+    # Preferred: parse the latest OSM file and label named ways.
+    picked_names: List[Tuple[str, Optional[str], float, float]] = []
+    osm_path = _find_latest_osm_file(scene)
+    if osm_path and os.path.exists(osm_path):
+        try:
+            picked_names = _parse_osm_named_ways(osm_path)
+        except Exception as exc:
+            _log_warn(f"Failed to parse OSM for names ({osm_path}): {exc}")
+            picked_names = []
 
     created = 0
-    seen: Set[Tuple[str, int, int]] = set()
-    for c in picked:
-        # Deduplicate by name + coarse XY position.
-        key = (c.name, int(c.center_world[0] // 10), int(c.center_world[1] // 10))
-        if key in seen:
-            continue
-        seen.add(key)
+    seen_names: Set[str] = set()
+    if picked_names:
+        # Prefer major highways when tag exists.
+        majors = [w for w in picked_names if (w[1] in _MAJOR_HIGHWAYS)]
+        use = majors if majors else picked_names
 
-        _create_text_label(
-            coll,
-            name=f"STREET_{len(seen):04d}",
-            location=c.center_world,
-            text=c.name,
-        )
-        created += 1
+        # De-dupe by name and cap to avoid scene spam.
+        max_labels = 200
+        for name, highway, lat, lon in use:
+            if created >= max_labels:
+                break
+            key = name.strip().lower()
+            if key in seen_names:
+                continue
+            xy = _project_latlon_to_world_xy(scene, lat, lon)
+            if xy is None:
+                continue
+            seen_names.add(key)
+            _create_text_label(
+                coll,
+                name=f"STREET_{created+1:04d}",
+                location=(xy[0], xy[1], 0.0),
+                text=name,
+            )
+            created += 1
 
-    # Nice-to-have: add intersection labels near start/end markers if they exist.
-    start_marker = _find_marker(scene, ("MARKER_START", "Start"))
-    end_marker = _find_marker(scene, ("MARKER_END", "End"))
-    if start_marker is not None:
-        created += _add_intersection_labels(coll, candidates=candidates, marker_obj=start_marker, prefix="START")
-    if end_marker is not None:
-        created += _add_intersection_labels(coll, candidates=candidates, marker_obj=end_marker, prefix="END")
+        # Intersections (best-effort): use nearest named roads by projected distance to markers.
+        start_marker = _find_marker(scene, ("MARKER_START", "Start"))
+        end_marker = _find_marker(scene, ("MARKER_END", "End"))
+        if start_marker is not None or end_marker is not None:
+            # Precompute all candidate road points in XY
+            road_pts: List[Tuple[str, float, float]] = []
+            for name, highway, lat, lon in picked_names:
+                xy = _project_latlon_to_world_xy(scene, lat, lon)
+                if xy is None:
+                    continue
+                road_pts.append((name, xy[0], xy[1]))
+
+            def nearest_two(marker_obj: bpy.types.Object) -> List[str]:
+                m = marker_obj.matrix_world.translation
+                mx, my = float(m.x), float(m.y)
+                by_dist = sorted(road_pts, key=lambda r: (r[1] - mx) ** 2 + (r[2] - my) ** 2)
+                names: List[str] = []
+                for n, _, _ in by_dist:
+                    if n not in names:
+                        names.append(n)
+                    if len(names) >= 2:
+                        break
+                return names
+
+            if start_marker is not None:
+                names = nearest_two(start_marker)
+                if names:
+                    label = f"{names[0]}  x  {names[1]}" if len(names) >= 2 else names[0]
+                    pos = start_marker.matrix_world.translation
+                    _create_text_label(
+                        coll,
+                        name="START_INTERSECTION",
+                        location=(float(pos.x), float(pos.y), float(pos.z) + 2.0),
+                        text=label,
+                    )
+                    created += 1
+            if end_marker is not None:
+                names = nearest_two(end_marker)
+                if names:
+                    label = f"{names[0]}  x  {names[1]}" if len(names) >= 2 else names[0]
+                    pos = end_marker.matrix_world.translation
+                    _create_text_label(
+                        coll,
+                        name="END_INTERSECTION",
+                        location=(float(pos.x), float(pos.y), float(pos.z) + 2.0),
+                        text=label,
+                    )
+                    created += 1
+    else:
+        # Fallback: object-based detection (may only find ASSET_ROADS in some scenes).
+        candidates = _road_candidates(scene)
+        if not candidates:
+            _log_warn("No candidate road objects found; nothing to label.")
+            return 0
+
+        majors = [c for c in candidates if (c.highway in _MAJOR_HIGHWAYS)]
+        picked = majors if majors else candidates
+
+        seen: Set[Tuple[str, int, int]] = set()
+        for c in picked:
+            key = (c.name, int(c.center_world[0] // 10), int(c.center_world[1] // 10))
+            if key in seen:
+                continue
+            seen.add(key)
+
+            _create_text_label(
+                coll,
+                name=f"STREET_{len(seen):04d}",
+                location=c.center_world,
+                text=c.name,
+            )
+            created += 1
+
+        start_marker = _find_marker(scene, ("MARKER_START", "Start"))
+        end_marker = _find_marker(scene, ("MARKER_END", "End"))
+        if start_marker is not None:
+            created += _add_intersection_labels(coll, candidates=candidates, marker_obj=start_marker, prefix="START")
+        if end_marker is not None:
+            created += _add_intersection_labels(coll, candidates=candidates, marker_obj=end_marker, prefix="END")
 
     # Always enforce non-render visibility; keep collection hidden by default.
     coll.hide_render = True

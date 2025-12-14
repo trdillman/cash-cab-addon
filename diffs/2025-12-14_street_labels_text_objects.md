@@ -12,15 +12,16 @@ Summary
 
 Key Implementation Notes
 - Name extraction:
-  - Attempts to read common custom properties (`name`, `osm:name`, etc.) from candidate road objects and their data blocks.
-  - Falls back to using object names that look like road objects if no tags exist.
+  - Preferred: parses the most recently downloaded `*.osm` in the addon OSM cache folder and extracts `way` tags (`name`, `highway`).
+  - Fallback: attempts to read common custom properties (`name`, `osm:name`, etc.) from candidate road objects and their data blocks.
+  - Last resort: uses object names that look like road objects (skips `ASSET_ROADS`).
 - Candidate selection:
-  - Prefers objects in an `ASSET_ROADS`/`ROADS` collection when present.
-  - Filters out helper/profile objects (e.g., `profile_*`, `way_profiles*`).
-  - “Major roads” preference uses `highway` tag if present (`motorway/trunk/primary/secondary/tertiary`); otherwise uses all named candidates.
+  - OSM-based mode prefers “major roads” by `highway` tag (`motorway/trunk/primary/secondary/tertiary`), otherwise includes all named ways.
+  - Object-based fallback filters out helper/profile objects (e.g., `profile_*`, `way_profiles*`).
 - Placement:
-  - Uses each candidate object’s bounding-box center transformed into world space.
-  - Adds small optional intersection labels near Start/End markers if available (best-effort).
+  - OSM-based mode places labels at a cheap centroid: average of the way’s node lat/lon projected into the scene using the current projection.
+  - Adds optional intersection labels near Start/End markers by finding nearest named OSM ways in projected space.
+  - Object-based fallback uses each candidate object’s bounding-box center transformed into world space.
 
 How to test in Blender UI (2–3 steps)
 1. Run `Fetch Route & Map` (so roads exist).
