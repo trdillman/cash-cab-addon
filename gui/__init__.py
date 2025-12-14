@@ -21,6 +21,11 @@ from .operators import (
     BLOSM_OT_ApplyUTurnTrim,
     BLOSM_OT_GenerateStreetLabels,
     BLOSM_OT_ClearStreetLabels,
+    BLOSM_OT_RouteAdjusterCreateControls,
+    BLOSM_OT_RouteAdjusterRecompute,
+    BLOSM_OT_RouteAdjusterAddVia,
+    BLOSM_OT_RouteAdjusterClearVias,
+    BLOSM_OT_RouteAdjusterLiveUpdateModal,
 )
 from .cleanup_operator import BLOSM_OT_CleanAndClear
 
@@ -77,6 +82,11 @@ _classes = (
     BLOSM_OT_ApplyUTurnTrim,
     BLOSM_OT_GenerateStreetLabels,
     BLOSM_OT_ClearStreetLabels,
+    BLOSM_OT_RouteAdjusterCreateControls,
+    BLOSM_OT_RouteAdjusterRecompute,
+    BLOSM_OT_RouteAdjusterAddVia,
+    BLOSM_OT_RouteAdjusterClearVias,
+    BLOSM_OT_RouteAdjusterLiveUpdateModal,
     BLOSM_OT_CleanAndClear,
     BLOSM_PT_RouteImport,
     BlosmProperties

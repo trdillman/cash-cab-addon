@@ -54,6 +54,22 @@ def _on_uturn_trim_params_update(self, context):
         print(f"[CashCab] WARN u-turn trim params update failed: {exc}")
 
 
+def _on_route_adjuster_live_update_toggle(self, context):
+    # Start the modal watcher when toggled on. Turning off is handled by the modal operator itself.
+    try:
+        if not bool(getattr(self, "route_adjuster_live_update", False)):
+            return
+        if context is None or getattr(context, "window_manager", None) is None:
+            return
+        bpy.ops.blosm.route_adjuster_live_update_modal("INVOKE_DEFAULT")
+    except Exception as exc:
+        try:
+            self.route_adjuster_last_error = str(exc)
+            self.route_adjuster_live_update = False
+        except Exception:
+            pass
+
+
 
 
 
@@ -416,6 +432,45 @@ class BlosmProperties(bpy.types.PropertyGroup):
         name="Show Extra Features",
         description="Toggle visibility of extra convenience features in the CashCab panel",
         default=False,
+    )
+
+    route_adjuster_enabled: bpy.props.BoolProperty(
+        name="Enable Route Adjuster",
+        description="Enable interactive route control empties and reroute tools",
+        default=False,
+    )
+
+    route_adjuster_live_update: bpy.props.BoolProperty(
+        name="Live Update (opt-in)",
+        description="When enabled, reroute automatically after moving ROUTE_CTRL_* empties (debounced)",
+        default=False,
+        update=_on_route_adjuster_live_update_toggle,
+    )
+
+    route_adjuster_snap_points: bpy.props.BoolProperty(
+        name="Snap control points to roads",
+        description="When rerouting from controls, snap control points to nearby road centerlines",
+        default=False,
+    )
+
+    route_adjuster_allow_any_highway_fallback: bpy.props.BoolProperty(
+        name="Allow any-highway fallback",
+        description="If strict snap fails, allow snapping to any OSM highway (may include service/paths)",
+        default=False,
+    )
+
+    route_adjuster_debounce_ms: bpy.props.IntProperty(
+        name="Debounce (ms)",
+        description="Delay before recompute when live updates are enabled",
+        default=250,
+        min=0,
+        max=5000,
+    )
+
+    route_adjuster_last_error: bpy.props.StringProperty(
+        name="Last Error",
+        description="Last route adjuster error message",
+        default="",
     )
 
     ui_show_street_labels: bpy.props.BoolProperty(
