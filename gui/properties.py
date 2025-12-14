@@ -33,6 +33,15 @@ def _on_uturn_trim_toggle(self, context):
         print(f"[CashCab] WARN u-turn trim toggle failed: {exc}")
 
 
+def _on_uturn_trim_params_update(self, context):
+    # Only reapply if trimming is enabled; otherwise leave route untouched.
+    try:
+        if bool(getattr(self, "route_trim_end_uturns", False)):
+            bpy.ops.blosm.apply_uturn_trim('EXEC_DEFAULT')
+    except Exception as exc:
+        print(f"[CashCab] WARN u-turn trim params update failed: {exc}")
+
+
 
 
 
@@ -239,7 +248,7 @@ class BlosmProperties(bpy.types.PropertyGroup):
             "After geocoding, snap the start/end points to the nearest OSM road "
             "centerline using Overpass. Disable to use raw geocoder coordinates."
         ),
-        default=True,
+        default=False,
     )
 
     # Route geocoded coordinates (stored by geocoding service)
@@ -321,6 +330,42 @@ class BlosmProperties(bpy.types.PropertyGroup):
         ),
         default=False,
         update=_on_uturn_trim_toggle,
+    )
+
+    route_trim_window_fraction: bpy.props.FloatProperty(
+        name="Trim Window Fraction",
+        description="Fraction of total route length analyzed at each end (0.10 = 10%)",
+        default=0.10,
+        min=0.01,
+        max=0.50,
+        update=_on_uturn_trim_params_update,
+    )
+
+    route_trim_corner_angle_min: bpy.props.FloatProperty(
+        name="Corner Angle Min (deg)",
+        description="Minimum turn angle to consider as a corner candidate",
+        default=70.0,
+        min=0.0,
+        max=180.0,
+        update=_on_uturn_trim_params_update,
+    )
+
+    route_trim_direction_reverse_deg: bpy.props.FloatProperty(
+        name="Direction Reverse (deg)",
+        description="Minimum direction reversal angle to classify as a U-turn",
+        default=150.0,
+        min=90.0,
+        max=180.0,
+        update=_on_uturn_trim_params_update,
+    )
+
+    route_trim_max_uturn_fraction: bpy.props.FloatProperty(
+        name="Max U-Turn Fraction",
+        description="Maximum fraction of route length allowed for the trimmed U-turn region",
+        default=0.10,
+        min=0.01,
+        max=0.50,
+        update=_on_uturn_trim_params_update,
     )
 
     route_import_separate_tiles: bpy.props.BoolProperty(

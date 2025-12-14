@@ -57,3 +57,26 @@ class TestRouteUTurnTrim(unittest.TestCase):
         pts = [Vector((0.0, 0.0, 0.0)), Vector((1.0, 0.0, 0.0)), Vector((2.0, 0.0, 0.0))]
         out = trim_end_uturns(pts)
         self.assertIs(out, pts)
+
+    def test_window_fraction_can_disable_detection(self):
+        # With a tiny window, the corner cluster isn't inside the analysis region.
+        pts = [
+            Vector((0.0, 0.0, 0.0)),
+            Vector((10.0, 0.0, 0.0)),
+            Vector((10.0, 10.0, 0.0)),
+            Vector((0.0, 10.0, 0.0)),
+            Vector((-340.0, 10.0, 0.0)),
+        ]
+        out = trim_end_uturns(pts, window_fraction=0.001)
+        self.assertEqual(len(out), len(pts))
+
+    def test_corner_angle_threshold_can_disable_detection(self):
+        pts = [
+            Vector((0.0, 0.0, 0.0)),
+            Vector((10.0, 0.0, 0.0)),
+            Vector((10.0, 10.0, 0.0)),
+            Vector((0.0, 10.0, 0.0)),
+            Vector((-340.0, 10.0, 0.0)),
+        ]
+        out = trim_end_uturns(pts, corner_angle_min=179.0)
+        self.assertEqual(len(out), len(pts))

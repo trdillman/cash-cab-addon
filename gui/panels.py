@@ -36,7 +36,6 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
         # Address inputs
         col = layout.column(align=True)
         col.prop(addon, "route_start_address", text="Start Address")
-        col.prop(addon, "route_snap_to_road_centerline", text="Snap to road centerlines")
 
         # Waypoints section
         waypoints_box = layout.box()
@@ -128,7 +127,14 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
 
         if addon.ui_show_extra_features:
             body = extra_box.column(align=True)
+            body.prop(addon, "route_snap_to_road_centerline", text="Snap to road centerlines")
+            body.separator()
             body.prop(addon, "route_trim_end_uturns", text="Trim Start/End U-Turns")
+            if addon.route_trim_end_uturns:
+                body.prop(addon, "route_trim_window_fraction", text="Trim Window")
+                body.prop(addon, "route_trim_max_uturn_fraction", text="Max U-Turn Size")
+                body.prop(addon, "route_trim_corner_angle_min", text="Corner Angle Min")
+                body.prop(addon, "route_trim_direction_reverse_deg", text="Direction Reverse")
             body.operator("blosm.apply_uturn_trim", text="Reapply Trim/Restore", icon='FILE_REFRESH')
 
         # Pre-flight confirmations (assets + render settings)

@@ -962,6 +962,7 @@ class BLOSM_OT_FetchRouteMap(bpy.types.Operator):
             projection = app_obj.projection
         if not projection:
             raise RouteServiceError("Projection is not available for placing the route")
+
         coords_raw = [projection.fromGeographic(lat, lon) for lat, lon in route_ctx.route.points]
         if len(coords_raw) < 2:
             raise RouteServiceError("Route geometry is too short")
@@ -974,7 +975,13 @@ class BLOSM_OT_FetchRouteMap(bpy.types.Operator):
             if addon is not None and bool(getattr(addon, "route_trim_end_uturns", False)):
                 from .uturn_trim import compute_trimmed_coords
 
-                coords = compute_trimmed_coords(coords_raw)
+                coords = compute_trimmed_coords(
+                    coords_raw,
+                    window_fraction=float(getattr(addon, "route_trim_window_fraction", 0.10)),
+                    corner_angle_min=float(getattr(addon, "route_trim_corner_angle_min", 70.0)),
+                    direction_reverse_deg=float(getattr(addon, "route_trim_direction_reverse_deg", 150.0)),
+                    max_uturn_fraction=float(getattr(addon, "route_trim_max_uturn_fraction", 0.10)),
+                )
         except Exception as exc:
             self._log(f"WARN u-turn trim skipped: {exc}")
 

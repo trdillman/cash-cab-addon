@@ -117,9 +117,22 @@ def get_route_raw_coords(route_obj: bpy.types.Object) -> Optional[List[Tuple[flo
         return None
 
 
-def compute_trimmed_coords(coords_raw: Sequence[Tuple[float, float, float]]) -> List[Tuple[float, float, float]]:
+def compute_trimmed_coords(
+    coords_raw: Sequence[Tuple[float, float, float]],
+    *,
+    window_fraction: float = 0.10,
+    corner_angle_min: float = 70.0,
+    direction_reverse_deg: float = 150.0,
+    max_uturn_fraction: float = 0.10,
+) -> List[Tuple[float, float, float]]:
     pts = [Vector((float(c[0]), float(c[1]), float(c[2]))) for c in coords_raw]
-    trimmed = trim_end_uturns(pts)
+    trimmed = trim_end_uturns(
+        pts,
+        window_fraction=float(window_fraction),
+        corner_angle_min=float(corner_angle_min),
+        direction_reverse_deg=float(direction_reverse_deg),
+        max_uturn_fraction=float(max_uturn_fraction),
+    )
     return [(float(p.x), float(p.y), float(p.z)) for p in trimmed]
 
 
@@ -140,7 +153,15 @@ def apply_route_uturn_trim(context, *, enabled: bool) -> bool:
 
     coords_target = coords_raw
     if enabled:
-        coords_target = compute_trimmed_coords(coords_raw)
+        scene = getattr(context, "scene", None)
+        addon = getattr(scene, "blosm", None) if scene else None
+        coords_target = compute_trimmed_coords(
+            coords_raw,
+            window_fraction=float(getattr(addon, "route_trim_window_fraction", 0.10)) if addon else 0.10,
+            corner_angle_min=float(getattr(addon, "route_trim_corner_angle_min", 70.0)) if addon else 70.0,
+            direction_reverse_deg=float(getattr(addon, "route_trim_direction_reverse_deg", 150.0)) if addon else 150.0,
+            max_uturn_fraction=float(getattr(addon, "route_trim_max_uturn_fraction", 0.10)) if addon else 0.10,
+        )
 
     if len(coords_target) < 2:
         return False
