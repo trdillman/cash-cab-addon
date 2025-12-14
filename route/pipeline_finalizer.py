@@ -3846,6 +3846,12 @@ def run(ctx_or_scene: SceneLike = None) -> dict[str, object]:
         cc_street_labels.ensure_street_labels_collection(scene)
         created = int(cc_street_labels.generate_street_labels(scene))
         result["street_labels_created"] = created
+        try:
+            props = getattr(scene, "blosm", None)
+            if props is not None and hasattr(props, "ui_show_street_labels"):
+                props.ui_show_street_labels = True
+        except Exception:
+            pass
     except Exception as exc:
         print(f"[BLOSM] WARN street labels auto-generate failed: {exc}")
 

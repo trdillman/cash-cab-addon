@@ -45,8 +45,8 @@ def ensure_street_labels_collection(scene: bpy.types.Scene) -> bpy.types.Collect
         scene.collection.children.link(coll)
 
     coll.hide_render = True
-    coll.hide_viewport = True
-    # Keep collection selectable (user preference); selection behavior handled by viewport hide toggles.
+    # Visible by default (user preference); labels never render.
+    coll.hide_viewport = False
     try:
         coll.hide_select = False
     except Exception:
@@ -377,8 +377,8 @@ def _create_text_label(
 
     obj = bpy.data.objects.new(name=clean_name, object_data=curve)
     obj.location = location
-    # Make text face up (equivalent to R, X, +90 in LOCAL orientation with individual origins).
-    obj.rotation_euler = (radians(90.0), 0.0, _normalize_text_yaw(float(yaw_radians)))
+    # Default text orientation faces +Z (flat on XY plane). Rotate only around Z to align to road direction.
+    obj.rotation_euler = (0.0, 0.0, _normalize_text_yaw(float(yaw_radians)))
     obj.hide_render = True
     obj.hide_viewport = False
     try:
@@ -564,7 +564,11 @@ def generate_street_labels(scene: bpy.types.Scene) -> int:
 
     # Always enforce non-render visibility; keep collection hidden by default.
     coll.hide_render = True
-    coll.hide_viewport = True
+    coll.hide_viewport = False
+    try:
+        coll.hide_select = False
+    except Exception:
+        pass
     for obj in list(coll.objects):
         try:
             obj.hide_render = True
