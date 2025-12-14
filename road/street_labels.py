@@ -46,12 +46,7 @@ def ensure_street_labels_collection(scene: bpy.types.Scene) -> bpy.types.Collect
 
     coll.hide_render = True
     coll.hide_viewport = True
-    # Prevent accidental selection/movement while using a top-down "map" workflow.
-    # Note: Blender's collection selection restriction affects contained objects too.
-    try:
-        coll.hide_select = True
-    except Exception:
-        pass
+    # Keep collection selectable (user preference); selection behavior handled by viewport hide toggles.
     return coll
 
 
@@ -378,7 +373,8 @@ def _create_text_label(
 
     obj = bpy.data.objects.new(name=clean_name, object_data=curve)
     obj.location = location
-    obj.rotation_euler = (radians(-90.0), 0.0, _normalize_text_yaw(float(yaw_radians)))
+    # Make text face up (equivalent to R, X, +90 in LOCAL orientation with individual origins).
+    obj.rotation_euler = (radians(90.0), 0.0, _normalize_text_yaw(float(yaw_radians)))
     obj.hide_render = True
     obj.hide_viewport = False
     try:
