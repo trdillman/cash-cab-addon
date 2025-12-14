@@ -145,6 +145,30 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
             row.operator("blosm.generate_street_labels", text="Generate Street Labels", icon='OUTLINER_OB_FONT')
             row.operator("blosm.clear_street_labels", text="Clear Street Labels", icon='TRASH')
 
+            body.separator()
+            adjuster_box = body.box()
+            adjuster_box.label(text="Route Adjuster", icon='EMPTY_AXIS')
+            adjuster_box.prop(addon, "route_adjuster_enabled", text="Enable Route Adjuster")
+
+            controls = adjuster_box.column(align=True)
+            controls.enabled = bool(addon.route_adjuster_enabled)
+            controls.prop(addon, "route_adjuster_live_update", text="Live update (debounced)")
+            controls.prop(addon, "route_adjuster_snap_points", text="Snap control points to roads")
+            if bool(getattr(addon, "route_adjuster_snap_points", False)):
+                controls.prop(addon, "route_adjuster_allow_any_highway_fallback", text="Allow any-highway fallback")
+            controls.prop(addon, "route_adjuster_debounce_ms", text="Debounce (ms)")
+
+            row = controls.row(align=True)
+            row.operator("blosm.route_adjuster_create_controls", text="Create/Sync Controls", icon='EMPTY_AXIS')
+            row.operator("blosm.route_adjuster_recompute", text="Recompute Route Now", icon='FILE_REFRESH')
+
+            row = controls.row(align=True)
+            row.operator("blosm.route_adjuster_add_via", text="Add Via", icon='ADD')
+            row.operator("blosm.route_adjuster_clear_vias", text="Clear Vias", icon='TRASH')
+
+            if getattr(addon, "route_adjuster_last_error", ""):
+                controls.label(text=f"Last error: {addon.route_adjuster_last_error}", icon='ERROR')
+
         # Pre-flight confirmations (assets + render settings)
         preflight_box = layout.box()
         preflight_box.label(text="Pre-flight Checks", icon='INFO')

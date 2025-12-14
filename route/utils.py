@@ -432,6 +432,7 @@ def _snap_to_road_centerline(
     street_name: Optional[str] = None,
     radius_m: float = 150.0,
     max_snap_m: float = 60.0,
+    allow_any_highway_fallback: bool = True,
 ) -> Optional[Tuple[float, float]]:
     """Snap a point to the nearest road centerline using Overpass.
 
@@ -474,13 +475,13 @@ def _snap_to_road_centerline(
             "out body;\n"
         ).format(timeout=_OVERPASS_TIMEOUT, radius=int(radius_m), lat=lat, lon=lon)
 
-    # Try: name-aware allowlist -> allowlist -> any highway.
+    # Try: name-aware allowlist -> allowlist -> (optional) any highway.
     data = None
     if street_name and street_name.strip():
         data = _overpass_request_json(_build_query(require_name_match=True), user_agent=user_agent)
     if not data:
         data = _overpass_request_json(_build_query(require_name_match=False), user_agent=user_agent)
-    if not data:
+    if not data and allow_any_highway_fallback:
         data = _overpass_request_json(_build_fallback_query_any_highway(), user_agent=user_agent)
     if not data:
         return None

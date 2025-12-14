@@ -7,6 +7,7 @@ UPDATED to use the new Dict-based asset isolation interface.
 
 import shutil
 from pathlib import Path
+import time
 
 import bpy
 
@@ -244,3 +245,228 @@ class BLOSM_OT_ApplyUTurnTrim(bpy.types.Operator):
 
         self.report({'INFO'}, "U-turn trim applied" if enabled else "U-turn trim restored (raw route)")
         return {'FINISHED'}
+
+
+class BLOSM_OT_RouteAdjusterCreateControls(bpy.types.Operator):
+    """Create or resync route control empties (start/end)."""
+
+    bl_idname = "blosm.route_adjuster_create_controls"
+    bl_label = "Create/Sync Route Controls"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        addon = getattr(getattr(context, "scene", None), "blosm", None)
+        try:
+            from ..route import route_adjuster
+
+            ok = bool(route_adjuster.ensure_route_control_empties(context.scene))
+            if not ok:
+                self.report({'WARNING'}, "No ROUTE curve found")
+                return {'CANCELLED'}
+            if addon is not None:
+                addon.route_adjuster_last_error = ""
+            self.report({'INFO'}, "Route control empties ensured")
+            return {'FINISHED'}
+        except Exception as exc:
+            if addon is not None:
+                addon.route_adjuster_last_error = str(exc)
+            self.report({'ERROR'}, f"Route controls failed: {exc}")
+            return {'CANCELLED'}
+
+
+class BLOSM_OT_RouteAdjusterRecompute(bpy.types.Operator):
+    """Recompute route from control empties."""
+
+    bl_idname = "blosm.route_adjuster_recompute"
+    bl_label = "Recompute Route Now"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        addon = getattr(getattr(context, "scene", None), "blosm", None)
+        try:
+            from ..route import route_adjuster
+
+            ok = bool(route_adjuster.recompute_route_from_controls(context))
+            if not ok:
+                if addon is not None:
+                    addon.route_adjuster_last_error = "Missing ROUTE or controls"
+                self.report({'WARNING'}, "Route recompute skipped (missing ROUTE or controls)")
+                return {'CANCELLED'}
+            if addon is not None:
+                addon.route_adjuster_last_error = ""
+            self.report({'INFO'}, "Route recomputed from controls")
+            return {'FINISHED'}
+        except Exception as exc:
+            if addon is not None:
+                addon.route_adjuster_last_error = str(exc)
+            self.report({'ERROR'}, f"Route recompute failed: {exc}")
+            return {'CANCELLED'}
+
+
+class BLOSM_OT_RouteAdjusterAddVia(bpy.types.Operator):
+    """Add a via control empty."""
+
+    bl_idname = "blosm.route_adjuster_add_via"
+    bl_label = "Add Via Point"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        addon = getattr(getattr(context, "scene", None), "blosm", None)
+        try:
+            from ..route import route_adjuster
+
+            obj = route_adjuster.create_via_control(context.scene)
+            if obj is None:
+                self.report({'WARNING'}, "No ROUTE curve found")
+                return {'CANCELLED'}
+            if addon is not None:
+                addon.route_adjuster_last_error = ""
+            self.report({'INFO'}, f"Added via control: {obj.name}")
+            return {'FINISHED'}
+        except Exception as exc:
+            if addon is not None:
+                addon.route_adjuster_last_error = str(exc)
+            self.report({'ERROR'}, f"Add via failed: {exc}")
+            return {'CANCELLED'}
+
+
+class BLOSM_OT_RouteAdjusterClearVias(bpy.types.Operator):
+    """Clear all via control empties."""
+
+    bl_idname = "blosm.route_adjuster_clear_vias"
+    bl_label = "Clear Via Points"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        addon = getattr(getattr(context, "scene", None), "blosm", None)
+        try:
+            from ..route import route_adjuster
+
+            removed = int(route_adjuster.clear_via_controls())
+            if addon is not None:
+                addon.route_adjuster_last_error = ""
+            self.report({'INFO'}, f"Via controls cleared: {removed}")
+            return {'FINISHED'}
+        except Exception as exc:
+            if addon is not None:
+                addon.route_adjuster_last_error = str(exc)
+            self.report({'ERROR'}, f"Clear vias failed: {exc}")
+            return {'CANCELLED'}
+
+
+class BLOSM_OT_RouteAdjusterLiveUpdateModal(bpy.types.Operator):
+    """Debounced live recompute watcher for ROUTE_CTRL_* empties."""
+
+    bl_idname = "blosm.route_adjuster_live_update_modal"
+    bl_label = "Route Adjuster Live Update"
+    bl_options = {'INTERNAL'}
+
+    _is_running = False
+    _timer = None
+    _last_positions = None
+    _last_change_t = 0.0
+    _pending = False
+    _suppress_until = 0.0
+
+    def _collect_positions(self):
+        from ..route import route_adjuster
+
+        positions = {}
+        for obj in route_adjuster.iter_all_controls():
+            try:
+                positions[obj.name] = obj.matrix_world.translation.copy()
+            except Exception:
+                continue
+        return positions
+
+    def invoke(self, context, event):
+        cls = type(self)
+        scene = getattr(context, "scene", None)
+        addon = getattr(scene, "blosm", None) if scene else None
+        if addon is None or not bool(getattr(addon, "route_adjuster_enabled", False)):
+            return {'CANCELLED'}
+        if not bool(getattr(addon, "route_adjuster_live_update", False)):
+            return {'CANCELLED'}
+
+        if cls._is_running:
+            return {'CANCELLED'}
+
+        if cls._timer is None:
+            cls._is_running = True
+            cls._timer = context.window_manager.event_timer_add(0.2, window=context.window)
+            context.window_manager.modal_handler_add(self)
+            cls._last_positions = self._collect_positions()
+            cls._last_change_t = 0.0
+            cls._pending = False
+            cls._suppress_until = 0.0
+        return {'RUNNING_MODAL'}
+
+    def modal(self, context, event):
+        cls = type(self)
+        if event.type != 'TIMER':
+            return {'PASS_THROUGH'}
+
+        scene = getattr(context, "scene", None)
+        addon = getattr(scene, "blosm", None) if scene else None
+        if addon is None or not bool(getattr(addon, "route_adjuster_enabled", False)):
+            return self._cancel(context)
+        if not bool(getattr(addon, "route_adjuster_live_update", False)):
+            return self._cancel(context)
+
+        now = time.monotonic()
+        debounce_ms = int(getattr(addon, "route_adjuster_debounce_ms", 250))
+        debounce_s = max(0.0, float(debounce_ms) / 1000.0)
+
+        current = self._collect_positions()
+        moved = False
+        if cls._last_positions is None:
+            cls._last_positions = current
+        else:
+            if now >= cls._suppress_until:
+                for name, pos in current.items():
+                    prev = cls._last_positions.get(name)
+                    if prev is None:
+                        moved = True
+                        continue
+                    if (pos - prev).length > 1e-5:
+                        moved = True
+                        break
+
+        cls._last_positions = current
+        if moved and now >= cls._suppress_until:
+            cls._pending = True
+            cls._last_change_t = now
+
+        if cls._pending and now >= cls._suppress_until:
+            if cls._last_change_t and (now - cls._last_change_t) >= debounce_s:
+                try:
+                    from ..route import route_adjuster
+
+                    ok = bool(route_adjuster.recompute_route_from_controls(context))
+                    if not ok:
+                        addon.route_adjuster_last_error = "Missing ROUTE or controls"
+                    else:
+                        addon.route_adjuster_last_error = ""
+                except Exception as exc:
+                    addon.route_adjuster_last_error = str(exc)
+                cls._pending = False
+                cls._suppress_until = time.monotonic() + 0.5
+                cls._last_positions = self._collect_positions()
+
+        return {'PASS_THROUGH'}
+
+    def _cancel(self, context):
+        cls = type(self)
+        try:
+            if cls._timer is not None:
+                context.window_manager.event_timer_remove(cls._timer)
+        except Exception:
+            pass
+        cls._timer = None
+        cls._last_positions = None
+        cls._pending = False
+        cls._is_running = False
+        return {'CANCELLED'}
+
+    def cancel(self, context):
+        return self._cancel(context)

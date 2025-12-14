@@ -1015,6 +1015,14 @@ class BLOSM_OT_FetchRouteMap(bpy.types.Operator):
                 ensure_route_raw_coords(route_obj, coords_raw)
             except Exception:
                 pass
+            try:
+                addon = getattr(getattr(context, "scene", None), "blosm", None)
+                if addon is not None and bool(getattr(addon, "route_adjuster_enabled", False)):
+                    from .route_adjuster import ensure_route_control_empties
+
+                    ensure_route_control_empties(context.scene)
+            except Exception:
+                pass
         return route_obj
     def _ensure_preview_objects(self, context, route_obj):
         scene = context.scene
