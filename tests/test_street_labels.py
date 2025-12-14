@@ -3,9 +3,29 @@ import unittest
 import bpy
 
 
+def _load_local_addon() -> None:
+    # Force-load addon package from this worktree, not from any installed addon path.
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    addon_dir = Path(__file__).resolve().parent.parent
+    init_path = addon_dir / "__init__.py"
+
+    spec = importlib.util.spec_from_file_location(
+        "cash_cab_addon",
+        init_path,
+        submodule_search_locations=[str(addon_dir)],
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["cash_cab_addon"] = module
+    spec.loader.exec_module(module)
+
+
 class TestStreetLabels(unittest.TestCase):
     def test_ensure_collection_hidden(self):
-        from cash_cab_addon.road import street_labels
+        _load_local_addon()
+        import cash_cab_addon.road.street_labels as street_labels
 
         scene = bpy.context.scene
         coll = street_labels.ensure_street_labels_collection(scene)
@@ -14,7 +34,8 @@ class TestStreetLabels(unittest.TestCase):
         self.assertTrue(coll.hide_viewport)
 
     def test_toggle_visibility(self):
-        from cash_cab_addon.road import street_labels
+        _load_local_addon()
+        import cash_cab_addon.road.street_labels as street_labels
 
         scene = bpy.context.scene
         street_labels.set_street_labels_visible(scene, True)
