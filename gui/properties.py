@@ -33,6 +33,18 @@ def _on_uturn_trim_toggle(self, context):
         print(f"[CashCab] WARN u-turn trim toggle failed: {exc}")
 
 
+def _on_street_labels_toggle(self, context):
+    try:
+        from ..road import street_labels
+
+        scene = getattr(context, "scene", None)
+        if scene is None:
+            return
+        street_labels.set_street_labels_visible(scene, bool(getattr(self, "ui_show_street_labels", False)))
+    except Exception as exc:
+        print(f"[BLOSM] WARN street labels: toggle failed: {exc}")
+
+
 def _on_uturn_trim_params_update(self, context):
     # Only reapply if trimming is enabled; otherwise leave route untouched.
     try:
@@ -404,6 +416,13 @@ class BlosmProperties(bpy.types.PropertyGroup):
         name="Show Extra Features",
         description="Toggle visibility of extra convenience features in the CashCab panel",
         default=False,
+    )
+
+    ui_show_street_labels: bpy.props.BoolProperty(
+        name="Show Street Labels",
+        description="Show/hide the STREET_LABELS collection in the viewport (labels never render)",
+        default=False,
+        update=_on_street_labels_toggle,
     )
 
     # Fallback building heights (used by route buildings)

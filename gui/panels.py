@@ -137,6 +137,14 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
                 body.prop(addon, "route_trim_direction_reverse_deg", text="Direction Reverse")
             body.operator("blosm.apply_uturn_trim", text="Reapply Trim/Restore", icon='FILE_REFRESH')
 
+            body.separator()
+            labels_box = body.box()
+            labels_box.label(text="Street Labels", icon='FONT_DATA')
+            labels_box.prop(addon, "ui_show_street_labels", text="Show Street Labels")
+            row = labels_box.row(align=True)
+            row.operator("blosm.generate_street_labels", text="Generate Street Labels", icon='OUTLINER_OB_FONT')
+            row.operator("blosm.clear_street_labels", text="Clear Street Labels", icon='TRASH')
+
         # Pre-flight confirmations (assets + render settings)
         preflight_box = layout.box()
         preflight_box.label(text="Pre-flight Checks", icon='INFO')
