@@ -113,6 +113,24 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
 
             if not has_import_state:
                 body.label(text="Run Fetch Route and Map first to enable extend.", icon='INFO')
+
+        # Extra Features (collapsible, after Extend City)
+        extra_box = layout.box()
+        header = extra_box.row()
+        header.prop(
+            addon,
+            "ui_show_extra_features",
+            text="",
+            icon='TRIA_DOWN' if addon.ui_show_extra_features else 'TRIA_RIGHT',
+            emboss=False,
+        )
+        header.label(text="Extra Features", icon='TOOL_SETTINGS')
+
+        if addon.ui_show_extra_features:
+            body = extra_box.column(align=True)
+            body.prop(addon, "route_trim_end_uturns", text="Trim Start/End U-Turns")
+            body.operator("blosm.apply_uturn_trim", text="Reapply Trim/Restore", icon='FILE_REFRESH')
+
         # Pre-flight confirmations (assets + render settings)
         preflight_box = layout.box()
         preflight_box.label(text="Pre-flight Checks", icon='INFO')

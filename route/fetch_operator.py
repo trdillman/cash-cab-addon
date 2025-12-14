@@ -962,9 +962,22 @@ class BLOSM_OT_FetchRouteMap(bpy.types.Operator):
             projection = app_obj.projection
         if not projection:
             raise RouteServiceError("Projection is not available for placing the route")
-        coords = [projection.fromGeographic(lat, lon) for lat, lon in route_ctx.route.points]
-        if len(coords) < 2:
+        coords_raw = [projection.fromGeographic(lat, lon) for lat, lon in route_ctx.route.points]
+        if len(coords_raw) < 2:
             raise RouteServiceError("Route geometry is too short")
+
+        # Optional post-import convenience: trim start/end U-turn-like loops.
+        coords = coords_raw
+        try:
+            scene = getattr(context, "scene", None)
+            addon = getattr(scene, "blosm", None) if scene else None
+            if addon is not None and bool(getattr(addon, "route_trim_end_uturns", False)):
+                from .uturn_trim import compute_trimmed_coords
+
+                coords = compute_trimmed_coords(coords_raw)
+        except Exception as exc:
+            self._log(f"WARN u-turn trim skipped: {exc}")
+
         self._log("Creating Start, End, and Route objects")
         start_co = coords[0]
         end_co = coords[-1]
@@ -989,6 +1002,12 @@ class BLOSM_OT_FetchRouteMap(bpy.types.Operator):
         route_obj = self._ensure_route_curve(context, coords)
         if route_obj:
             context.scene.blosm_route_object_name = route_obj.name
+            try:
+                from .uturn_trim import ensure_route_raw_coords
+
+                ensure_route_raw_coords(route_obj, coords_raw)
+            except Exception:
+                pass
         return route_obj
     def _ensure_preview_objects(self, context, route_obj):
         scene = context.scene

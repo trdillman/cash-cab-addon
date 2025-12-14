@@ -25,6 +25,14 @@ def _gather_selected_objects(context):
     return selected
 
 
+def _on_uturn_trim_toggle(self, context):
+    # Toggle should work immediately after route import; use an operator for consistent context/reporting.
+    try:
+        bpy.ops.blosm.apply_uturn_trim('EXEC_DEFAULT')
+    except Exception as exc:
+        print(f"[CashCab] WARN u-turn trim toggle failed: {exc}")
+
+
 
 
 
@@ -305,6 +313,16 @@ class BlosmProperties(bpy.types.PropertyGroup):
         default=True,
     )
 
+    route_trim_end_uturns: bpy.props.BoolProperty(
+        name="Trim Start/End U-Turns",
+        description=(
+            "Convenience toggle: detect and remove small U-turn loops near the start/end of the imported route. "
+            "Does not modify mid-route geometry."
+        ),
+        default=False,
+        update=_on_uturn_trim_toggle,
+    )
+
     route_import_separate_tiles: bpy.props.BoolProperty(
         name="Import separate tiles",
         description="Import Overpass tiles separately for better alignment",
@@ -334,6 +352,12 @@ class BlosmProperties(bpy.types.PropertyGroup):
     ui_show_extend_city: bpy.props.BoolProperty(
         name="Show Extend City Controls",
         description="Toggle visibility of the Extend City controls in the CashCab panel",
+        default=False,
+    )
+
+    ui_show_extra_features: bpy.props.BoolProperty(
+        name="Show Extra Features",
+        description="Toggle visibility of extra convenience features in the CashCab panel",
         default=False,
     )
 

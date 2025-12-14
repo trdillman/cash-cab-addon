@@ -18,6 +18,7 @@ from .operators import (
     BLOSM_OT_LevelsDelete,
     BLOSM_OT_SetViewportClip,
     BLOSM_OT_AssetsUpdateNotice,
+    BLOSM_OT_ApplyUTurnTrim,
 )
 from .cleanup_operator import BLOSM_OT_CleanAndClear
 
@@ -71,6 +72,7 @@ _classes = (
     BLOSM_OT_LevelsDelete,
     BLOSM_OT_SetViewportClip,
     BLOSM_OT_AssetsUpdateNotice,
+    BLOSM_OT_ApplyUTurnTrim,
     BLOSM_OT_CleanAndClear,
     BLOSM_PT_RouteImport,
     BlosmProperties

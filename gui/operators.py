@@ -162,3 +162,35 @@ class BLOSM_OT_AssetsUpdateNotice(bpy.types.Operator):
         self.report({'INFO'}, "Updated assets confirmation acknowledged")
         return {'FINISHED'}
 
+
+class BLOSM_OT_ApplyUTurnTrim(bpy.types.Operator):
+    """Apply or restore start/end U-turn trimming on the ROUTE curve."""
+
+    bl_idname = "blosm.apply_uturn_trim"
+    bl_label = "Apply U-Turn Trim"
+    bl_description = "Apply (or restore) trimming of small U-turn loops near the start/end of the route"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        scene = getattr(context, "scene", None)
+        addon = getattr(scene, "blosm", None) if scene else None
+        enabled = bool(getattr(addon, "route_trim_end_uturns", False)) if addon else False
+        try:
+            from ..route.uturn_trim import apply_route_uturn_trim
+        except Exception as exc:
+            self.report({'ERROR'}, f"U-turn trim module import failed: {exc}")
+            return {'CANCELLED'}
+
+        ok = False
+        try:
+            ok = bool(apply_route_uturn_trim(context, enabled=enabled))
+        except Exception as exc:
+            self.report({'ERROR'}, f"U-turn trim failed: {exc}")
+            return {'CANCELLED'}
+
+        if not ok:
+            self.report({'WARNING'}, "No ROUTE curve found (or route too short)")
+            return {'CANCELLED'}
+
+        self.report({'INFO'}, "U-turn trim applied" if enabled else "U-turn trim restored (raw route)")
+        return {'FINISHED'}
