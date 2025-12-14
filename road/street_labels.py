@@ -19,9 +19,9 @@ from mathutils import Vector
 
 
 COLLECTION_NAME = "STREET_LABELS"
-LABEL_MATERIAL_NAME = "STREET_LABEL_MAT"
+LABEL_MATERIAL_NAME = "STREET_LABEL_SHADER"
 LABEL_SIZE = 20.0
-LABEL_Z_OFFSET = 0.25
+LABEL_Z_OFFSET = 100.0
 
 _MAJOR_HIGHWAYS: Set[str] = {"motorway", "trunk", "primary", "secondary", "tertiary"}
 
@@ -265,8 +265,29 @@ def _project_latlon_to_world_xy(scene: bpy.types.Scene, lat: float, lon: float) 
 def _ensure_label_material() -> bpy.types.Material:
     mat = bpy.data.materials.get(LABEL_MATERIAL_NAME)
     if mat is None:
-        mat = bpy.data.materials.new(name=LABEL_MATERIAL_NAME)
-    # Bright map-like yellow, readable on grey roads.
+        # Duplicate an existing "car shader" material so labels visually match the addon style.
+        source = None
+        try:
+            car = bpy.data.objects.get("ASSET_CAR")
+            if car is not None and getattr(car, "data", None) is not None:
+                mats = list(getattr(car.data, "materials", []) or [])
+                source = mats[0] if mats else None
+        except Exception:
+            source = None
+
+        if source is None:
+            source = bpy.data.materials.get("CAR_TRAIL_SHADER")
+
+        if source is not None:
+            try:
+                mat = source.copy()
+                mat.name = LABEL_MATERIAL_NAME
+            except Exception:
+                mat = bpy.data.materials.new(name=LABEL_MATERIAL_NAME)
+        else:
+            mat = bpy.data.materials.new(name=LABEL_MATERIAL_NAME)
+
+    # Bright map-like tint (also affects viewport display color).
     try:
         mat.diffuse_color = (1.0, 0.9, 0.15, 1.0)
     except Exception:
@@ -351,7 +372,7 @@ def _create_text_label(
 
     obj = bpy.data.objects.new(name=clean_name, object_data=curve)
     obj.location = location
-    obj.rotation_euler = (radians(90.0), 0.0, _normalize_text_yaw(float(yaw_radians)))
+    obj.rotation_euler = (radians(-90.0), 0.0, _normalize_text_yaw(float(yaw_radians)))
     obj.hide_render = True
     obj.hide_viewport = False
     try:
@@ -485,7 +506,7 @@ def generate_street_labels(scene: bpy.types.Scene) -> int:
                     _create_text_label(
                         coll,
                         name=label,
-                        location=(float(pos.x), float(pos.y), float(pos.z) + 2.0),
+                        location=(float(pos.x), float(pos.y), float(pos.z) + float(LABEL_Z_OFFSET) + 2.0),
                         text=label,
                         yaw_radians=0.0,
                     )
@@ -498,7 +519,7 @@ def generate_street_labels(scene: bpy.types.Scene) -> int:
                     _create_text_label(
                         coll,
                         name=label,
-                        location=(float(pos.x), float(pos.y), float(pos.z) + 2.0),
+                        location=(float(pos.x), float(pos.y), float(pos.z) + float(LABEL_Z_OFFSET) + 2.0),
                         text=label,
                         yaw_radians=0.0,
                     )
