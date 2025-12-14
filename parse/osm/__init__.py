@@ -1,4 +1,5 @@
 import xml.etree.cElementTree as etree
+import os
 
 from .node import Node
 from .way import Way
@@ -70,6 +71,7 @@ class Osm:
     
     def parse(self, filepath, **kwargs):
         forceExtentCalculation = kwargs.get("forceExtentCalculation")
+        debug_parse = os.environ.get("BLOSM_OSM_PARSE_DEBUG") == "1"
         
         osm = etree.parse(filepath).getroot()
         
@@ -100,7 +102,8 @@ class Osm:
                 self.nodes[_id] = node
             elif e.tag == "way":
                 _id = attrs["id"]
-                print(f"[DEBUG] Osm.parse: Processing way ID: {_id}")
+                if debug_parse:
+                    print(f"[DEBUG] Osm.parse: Processing way ID: {_id}")
                 nodes = []
                 tags = None
                 for c in e:
@@ -125,7 +128,8 @@ class Osm:
                         self.ways[_id] = way
             elif e.tag == "relation":
                 _id = attrs["id"]
-                print(f"[DEBUG] Osm.parse: Processing relation ID: {_id}")
+                if debug_parse:
+                    print(f"[DEBUG] Osm.parse: Processing relation ID: {_id}")
                 members = []
                 tags = None
                 relation = None
