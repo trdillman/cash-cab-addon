@@ -47,6 +47,10 @@ def ensure_street_labels_collection(scene: bpy.types.Scene) -> bpy.types.Collect
     coll.hide_render = True
     coll.hide_viewport = True
     # Keep collection selectable (user preference); selection behavior handled by viewport hide toggles.
+    try:
+        coll.hide_select = False
+    except Exception:
+        pass
     return coll
 
 
