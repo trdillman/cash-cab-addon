@@ -8,6 +8,7 @@ The collection and objects are forced to never render.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import atan2
 from math import radians
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 import os
@@ -18,6 +19,9 @@ from mathutils import Vector
 
 
 COLLECTION_NAME = "STREET_LABELS"
+LABEL_MATERIAL_NAME = "STREET_LABEL_MAT"
+LABEL_SIZE = 20.0
+LABEL_Z_OFFSET = 0.25
 
 _MAJOR_HIGHWAYS: Set[str] = {"motorway", "trunk", "primary", "secondary", "tertiary"}
 
@@ -204,9 +208,10 @@ def _find_latest_osm_file(scene: bpy.types.Scene) -> Optional[str]:
 
 
 def _parse_osm_named_ways(osm_path: str) -> List[Tuple[str, Optional[str], float, float]]:
-    """Parse an .osm XML file and return (name, highway, lat, lon) for named ways.
+    """Parse an .osm XML file and return (name, highway, lat, lon, lat_a, lon_a, lat_b, lon_b) for named ways.
 
     Uses average node lat/lon as a cheap centroid.
+    Also returns a coarse direction based on first/last node.
     """
     tree = ET.parse(osm_path)
     root = tree.getroot()
@@ -223,7 +228,7 @@ def _parse_osm_named_ways(osm_path: str) -> List[Tuple[str, Optional[str], float
         except Exception:
             continue
 
-    out: List[Tuple[str, Optional[str], float, float]] = []
+    out: List[Tuple[str, Optional[str], float, float, float, float, float, float]] = []
     for w in root.findall("way"):
         tags = {t.get("k"): t.get("v") for t in w.findall("tag") if t.get("k")}
         name = (tags.get("name") or "").strip()
@@ -238,7 +243,9 @@ def _parse_osm_named_ways(osm_path: str) -> List[Tuple[str, Optional[str], float
             continue
         lat_avg = sum(c[0] for c in coords) / float(len(coords))
         lon_avg = sum(c[1] for c in coords) / float(len(coords))
-        out.append((name, highway, float(lat_avg), float(lon_avg)))
+        lat_a, lon_a = coords[0]
+        lat_b, lon_b = coords[-1]
+        out.append((name, highway, float(lat_avg), float(lon_avg), float(lat_a), float(lon_a), float(lat_b), float(lon_b)))
     return out
 
 
@@ -253,6 +260,46 @@ def _project_latlon_to_world_xy(scene: bpy.types.Scene, lat: float, lon: float) 
         return float(x), float(y)
     except Exception:
         return None
+
+
+def _ensure_label_material() -> bpy.types.Material:
+    mat = bpy.data.materials.get(LABEL_MATERIAL_NAME)
+    if mat is None:
+        mat = bpy.data.materials.new(name=LABEL_MATERIAL_NAME)
+    # Bright map-like yellow, readable on grey roads.
+    try:
+        mat.diffuse_color = (1.0, 0.9, 0.15, 1.0)
+    except Exception:
+        pass
+    return mat
+
+
+def _sanitize_name(s: str, max_len: int = 60) -> str:
+    cleaned = (s or "").strip().replace("\n", " ")
+    cleaned = " ".join(cleaned.split())
+    if not cleaned:
+        return "STREET_LABEL"
+    # Keep it friendly for Blender names; avoid path separators and a few problematic chars.
+    for ch in ('"', "'", "\\", "/", ":", ";"):
+        cleaned = cleaned.replace(ch, " ")
+    cleaned = " ".join(cleaned.split())
+    return cleaned[:max_len]
+
+
+def _normalize_text_yaw(yaw_rad: float) -> float:
+    # Keep the label readable from above (avoid upside-down text).
+    # Normalize to [-pi, pi] first.
+    while yaw_rad > 3.141592653589793:
+        yaw_rad -= 6.283185307179586
+    while yaw_rad < -3.141592653589793:
+        yaw_rad += 6.283185307179586
+    if yaw_rad > 1.5707963267948966 or yaw_rad < -1.5707963267948966:
+        yaw_rad += 3.141592653589793
+        while yaw_rad > 3.141592653589793:
+            yaw_rad -= 6.283185307179586
+        while yaw_rad < -3.141592653589793:
+            yaw_rad += 6.283185307179586
+    return yaw_rad
 
 
 def _road_candidates(scene: bpy.types.Scene) -> List[_RoadCandidate]:
@@ -286,18 +333,31 @@ def _create_text_label(
     name: str,
     location: Tuple[float, float, float],
     text: str,
+    yaw_radians: float = 0.0,
 ) -> bpy.types.Object:
-    curve = bpy.data.curves.new(name=f"{name}_DATA", type="FONT")
+    mat = _ensure_label_material()
+
+    clean_name = _sanitize_name(name)
+    curve = bpy.data.curves.new(name=f"{clean_name}_DATA", type="FONT")
     curve.body = text
     curve.align_x = "CENTER"
     curve.align_y = "CENTER"
-    curve.size = 3.0
+    curve.size = float(LABEL_SIZE)
+    try:
+        curve.materials.clear()
+        curve.materials.append(mat)
+    except Exception:
+        pass
 
-    obj = bpy.data.objects.new(name=name, object_data=curve)
+    obj = bpy.data.objects.new(name=clean_name, object_data=curve)
     obj.location = location
-    obj.rotation_euler = (radians(90.0), 0.0, 0.0)
+    obj.rotation_euler = (radians(90.0), 0.0, _normalize_text_yaw(float(yaw_radians)))
     obj.hide_render = True
     obj.hide_viewport = False
+    try:
+        obj.color = mat.diffuse_color
+    except Exception:
+        pass
 
     # Link only into STREET_LABELS.
     coll.objects.link(obj)
@@ -367,7 +427,7 @@ def generate_street_labels(scene: bpy.types.Scene) -> int:
 
         # De-dupe by name and cap to avoid scene spam.
         max_labels = 200
-        for name, highway, lat, lon in use:
+        for name, highway, lat, lon, lat_a, lon_a, lat_b, lon_b in use:
             if created >= max_labels:
                 break
             key = name.strip().lower()
@@ -376,12 +436,20 @@ def generate_street_labels(scene: bpy.types.Scene) -> int:
             xy = _project_latlon_to_world_xy(scene, lat, lon)
             if xy is None:
                 continue
+
+            a_xy = _project_latlon_to_world_xy(scene, lat_a, lon_a)
+            b_xy = _project_latlon_to_world_xy(scene, lat_b, lon_b)
+            yaw = 0.0
+            if a_xy is not None and b_xy is not None:
+                yaw = atan2(float(b_xy[1]) - float(a_xy[1]), float(b_xy[0]) - float(a_xy[0]))
+
             seen_names.add(key)
             _create_text_label(
                 coll,
-                name=f"STREET_{created+1:04d}",
-                location=(xy[0], xy[1], 0.0),
+                name=name,
+                location=(xy[0], xy[1], float(LABEL_Z_OFFSET)),
                 text=name,
+                yaw_radians=yaw,
             )
             created += 1
 
@@ -391,7 +459,7 @@ def generate_street_labels(scene: bpy.types.Scene) -> int:
         if start_marker is not None or end_marker is not None:
             # Precompute all candidate road points in XY
             road_pts: List[Tuple[str, float, float]] = []
-            for name, highway, lat, lon in picked_names:
+            for name, highway, lat, lon, *_rest in picked_names:
                 xy = _project_latlon_to_world_xy(scene, lat, lon)
                 if xy is None:
                     continue
@@ -416,9 +484,10 @@ def generate_street_labels(scene: bpy.types.Scene) -> int:
                     pos = start_marker.matrix_world.translation
                     _create_text_label(
                         coll,
-                        name="START_INTERSECTION",
+                        name=label,
                         location=(float(pos.x), float(pos.y), float(pos.z) + 2.0),
                         text=label,
+                        yaw_radians=0.0,
                     )
                     created += 1
             if end_marker is not None:
@@ -428,9 +497,10 @@ def generate_street_labels(scene: bpy.types.Scene) -> int:
                     pos = end_marker.matrix_world.translation
                     _create_text_label(
                         coll,
-                        name="END_INTERSECTION",
+                        name=label,
                         location=(float(pos.x), float(pos.y), float(pos.z) + 2.0),
                         text=label,
+                        yaw_radians=0.0,
                     )
                     created += 1
     else:

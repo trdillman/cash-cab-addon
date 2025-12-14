@@ -71,3 +71,5 @@ class TestStreetLabels(unittest.TestCase):
             p.write_text(xml, encoding="utf-8")
             ways = street_labels._parse_osm_named_ways(str(p))
             self.assertTrue(any(w[0] == "Queen Street West" for w in ways))
+            # Tuple format: (name, highway, lat, lon, lat_a, lon_a, lat_b, lon_b)
+            self.assertTrue(all(len(w) == 8 for w in ways))
