@@ -46,6 +46,12 @@ def ensure_street_labels_collection(scene: bpy.types.Scene) -> bpy.types.Collect
 
     coll.hide_render = True
     coll.hide_viewport = True
+    # Prevent accidental selection/movement while using a top-down "map" workflow.
+    # Note: Blender's collection selection restriction affects contained objects too.
+    try:
+        coll.hide_select = True
+    except Exception:
+        pass
     return coll
 
 

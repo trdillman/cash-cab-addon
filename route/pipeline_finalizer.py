@@ -3838,6 +3838,37 @@ def run(ctx_or_scene: SceneLike = None) -> dict[str, object]:
     except Exception as exc:
         print(f"[BLOSM] WARN finalizer ASSET_CAMERA ensure failed: {exc}")
 
+    # --- Street Labels (auto-generate, hidden by default) ---
+    try:
+        from ..road import street_labels as cc_street_labels
+
+        # Always ensure exists, hidden by default, then generate idempotently.
+        cc_street_labels.ensure_street_labels_collection(scene)
+        created = int(cc_street_labels.generate_street_labels(scene))
+        result["street_labels_created"] = created
+    except Exception as exc:
+        print(f"[BLOSM] WARN street labels auto-generate failed: {exc}")
+
+    # --- Cleanup: unlink stray helper collections from Scene root ---
+    try:
+        root = getattr(scene, "collection", None)
+        if root is not None:
+            # Hide "map_*" tile collections and way profile helpers from the main outliner.
+            for coll in list(getattr(root, "children", []) or []):
+                try:
+                    name_cf = (coll.name or "").casefold()
+                    if name_cf == "way_profiles":
+                        root.children.unlink(coll)
+                        continue
+                    if name_cf.startswith("map_"):
+                        suffix = name_cf[4:]
+                        if suffix.isdigit() or name_cf.endswith(".osm"):
+                            root.children.unlink(coll)
+                except Exception:
+                    continue
+    except Exception as exc:
+        print(f"[BLOSM] WARN finalizer stray-collection cleanup failed: {exc}")
+
     return result
 
 
