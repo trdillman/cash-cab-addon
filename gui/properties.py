@@ -143,6 +143,24 @@ class BlosmProperties(bpy.types.PropertyGroup):
         description="Path to an OpenStreetMap file for import",
     )
 
+    # Route Provider settings
+    route_provider: bpy.props.EnumProperty(
+        name="Route Provider",
+        items=(
+            ("OSM", "OSM (Nominatim/OSRM)", "Use OpenStreetMap for geocoding and OSRM for routing"),
+            ("GOOGLE", "Google Maps", "Use Google Maps Platform for geocoding, routing, and snapping"),
+        ),
+        description="Service provider for route calculations",
+        default="OSM",
+    )
+
+    google_api_key: bpy.props.StringProperty(
+        name="Google Maps API Key",
+        description="API Key for Google Maps Platform (Geocoding, Directions, Roads)",
+        default="",
+        subtype='PASSWORD',
+    )
+
     # Coordinate bounds
     minLat: bpy.props.FloatProperty(
         name="min lat",

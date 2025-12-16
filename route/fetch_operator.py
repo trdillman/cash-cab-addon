@@ -515,6 +515,10 @@ class BLOSM_OT_FetchRouteMap(bpy.types.Operator):
             route_utils.SNAP_TO_ROAD_CENTERLINE = bool(
                 getattr(addon, "route_snap_to_road_centerline", True)
             )
+            # Extract provider settings
+            provider = getattr(addon, "route_provider", "OSM")
+            api_key = getattr(addon, "google_api_key", "")
+
             try:
                 route_ctx = prepare_route(
                     start_address,
@@ -522,6 +526,8 @@ class BLOSM_OT_FetchRouteMap(bpy.types.Operator):
                     padding_m,
                     user_agent,
                     waypoint_addresses=waypoint_addresses if waypoint_addresses else None,
+                    provider=provider,
+                    api_key=api_key,
                 )
 
                 # Persist the final geocoded (and snapped) coordinates onto the addon

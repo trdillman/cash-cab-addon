@@ -52,6 +52,18 @@ class APIConfig:
 
 
 @dataclass(frozen=True)
+class GoogleAPIConfig:
+    """
+    Google Maps Platform API configuration
+    """
+    api_key_default: str = ""
+    # Default to driving mode
+    default_travel_mode: str = "driving"
+    # Timeout for Google API requests
+    timeout_s: float = 30.0
+
+
+@dataclass(frozen=True)
 class GeographyConfig:
     """
     Geographic and projection constants
@@ -307,6 +319,7 @@ class RouteConfig:
     """
 
     api: APIConfig = field(default_factory=APIConfig)
+    google_api: GoogleAPIConfig = field(default_factory=GoogleAPIConfig)
     geography: GeographyConfig = field(default_factory=GeographyConfig)
     operator: RouteOperatorConfig = field(default_factory=RouteOperatorConfig)
     objects: BlenderObjectConfig = field(default_factory=BlenderObjectConfig)
@@ -439,6 +452,7 @@ def create_config_from_context(context) -> RouteConfig:
 # ===== Exports =====
 __all__ = [
     'APIConfig',
+    'GoogleAPIConfig',
     'GeographyConfig',
     'RouteOperatorConfig',
     'BlenderObjectConfig',

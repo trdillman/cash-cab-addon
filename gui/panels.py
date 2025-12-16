@@ -35,6 +35,18 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
 
         # Address inputs
         col = layout.column(align=True)
+        # Address inputs
+        col = layout.column(align=True)
+        
+        # Provider selection
+        col.prop(addon, "route_provider", text="Provider")
+        
+        if addon.route_provider == 'GOOGLE':
+            col.prop(addon, "google_api_key", text="API Key")
+            if not addon.google_api_key:
+                col.label(text="API Key required for Google Maps", icon='ERROR')
+        
+        col.separator()
         col.prop(addon, "route_start_address", text="Start Address")
 
         # Waypoints section
@@ -181,6 +193,11 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
             "blosm.apply_render_settings",
             text="Apply Render Settings",
             icon='RENDER_STILL',
+        )
+        preflight_box.operator(
+            "blosm.bake_all_geonodes",
+            text="Bake All Geonodes",
+            icon='MODIFIER'
         )
         preflight_box.operator(
             "blosm.set_viewport_clip",

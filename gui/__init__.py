@@ -26,6 +26,7 @@ from .operators import (
     BLOSM_OT_RouteAdjusterAddVia,
     BLOSM_OT_RouteAdjusterClearVias,
     BLOSM_OT_RouteAdjusterLiveUpdateModal,
+    BLOSM_OT_BakeAllGeonodes,
 )
 from .cleanup_operator import BLOSM_OT_CleanAndClear
 
@@ -87,6 +88,7 @@ _classes = (
     BLOSM_OT_RouteAdjusterAddVia,
     BLOSM_OT_RouteAdjusterClearVias,
     BLOSM_OT_RouteAdjusterLiveUpdateModal,
+    BLOSM_OT_BakeAllGeonodes,
     BLOSM_OT_CleanAndClear,
     BLOSM_PT_RouteImport,
     BlosmProperties

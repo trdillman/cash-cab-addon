@@ -3954,51 +3954,7 @@ def _bake_geometry_nodes_modifiers(
                     f"[BLOSM] WARN GN bake failed for '{obj.name}' "
                     f"modifier='{mod.name}', bake_id={getattr(bake, 'bake_id', None)}: {exc}"
                 )
-    return baked
-
-
-def _bake_buildings_geometry_nodes(scene: Optional[bpy.types.Scene]) -> int:
-    """Bake the BUILDINGS geometry nodes modifier at the end of the pipeline."""
-
-    if scene is None:
-        return 0
-    target = bpy.data.objects.get("BUILDINGS")
-    if target is None:
-        return 0
-    names = {"ASSET_BuildingGeoNodes", "BuildingGeo"}
-    count = _bake_geometry_nodes_modifiers(target, modifier_names=names)
-    if count:
-        print(f"[BLOSM] Baked {count} BUILDINGS geometry node modifier(s)")
-    return count
-
-
-def _bake_beam_geometry_nodes(scene: Optional[bpy.types.Scene]) -> int:
-    """Bake the geometry nodes modifier(s) applied to the ASSET_BEAM object."""
-
-    if scene is None:
-        return 0
-    beam = bpy.data.objects.get("ASSET_BEAM")
-    if beam is None:
-        return 0
-
-    # Ensure bake frame range is 200 frames
-    for mod in list(getattr(beam, "modifiers", []) or []):
-        if getattr(mod, "type", None) != "NODES":
-            continue
-        for bake in getattr(mod, "bakes", []):
-            try:
-                if hasattr(bake, "frame_start"):
-                    bake.frame_start = 1
-                if hasattr(bake, "frame_end"):
-                    bake.frame_end = 200
-                print(f"[BLOSM] Set bake frames 1-200 for beam modifier '{mod.name}'")
-            except Exception as exc:
-                print(f"[BLOSM] WARN failed to set beam bake frames: {exc}")
-
-    count = _bake_geometry_nodes_modifiers(beam)
-    if count:
-        print(f"[BLOSM] Baked {count} BEAM geometry node modifier(s)")
-    return count
+    return 0
 
 
 def _run_tylers_sandbox(scene: Optional[bpy.types.Scene]) -> Optional[dict[str, object]]:
@@ -4176,20 +4132,7 @@ def _run_tylers_sandbox(scene: Optional[bpy.types.Scene]) -> Optional[dict[str, 
     except Exception as exc:
         print(f"[BLOSM] Sandbox plane scale adjustments failed: {exc}")
 
-    # 8) Bake building and beam geometry nodes as a final step
-    try:
-        baked_buildings = _bake_buildings_geometry_nodes(scene)
-        if baked_buildings:
-            result["building_gn_baked"] = baked_buildings
-    except Exception as exc:
-        print(f"[BLOSM] Sandbox building GN bake failed: {exc}")
-
-    try:
-        baked_beam = _bake_beam_geometry_nodes(scene)
-        if baked_beam:
-            result["beam_gn_baked"] = baked_beam
-    except Exception as exc:
-        print(f"[BLOSM] Sandbox beam GN bake failed: {exc}")
+    # 8) Automatic geometry nodes baking removed - now done manually via GUI button
 
     # --- END Tyler's Sandbox -------------------------------------------------
 

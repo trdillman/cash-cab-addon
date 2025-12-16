@@ -123,35 +123,54 @@ def _request_json(url: str, user_agent: str, timeout: float = 30.0, throttle: bo
         raise RouteServiceError("Unable to decode response JSON") from exc
 
 
-def geocode(address: str, user_agent: str) -> GeocodeResult:
-    """Geocode a human-readable address via Nominatim, with optional snapping.
-
-    Behaviour:
-    - If the user enters a raw \"lat, lon\" string, treat it as coordinates
-      directly (no Nominatim call) and optionally snap to the nearest road.
-    - Otherwise, call Nominatim to geocode the address, then optionally snap
-      the resulting point to the nearest road centerline.
-
-    Raises RouteServiceError with a user-friendly message when no results are
-    returned or the response is malformed. The original input string is
-    included so the UI can show actionable guidance.
+def geocode(address: str, user_agent: str, provider: str = 'OSM', api_key: str = '') -> GeocodeResult:
+    """Geocode a human-readable address.
+    
+    Supports providers: 'OSM' (Nominatim) and 'GOOGLE' (Google Maps).
     """
     if not address or not address.strip():
         raise RouteServiceError("Address is empty. Please enter an address.")
 
     original = address.strip()
 
-    # 1) Support raw \"lat, lon\" input directly (no Nominatim lookup).
+    # 1) Support raw "lat, lon" input directly.
     coords = _parse_latlon_input(original)
     if coords is not None:
         lat, lon = coords
-        if SNAP_TO_ROAD_CENTERLINE:
+        # If using Google, try to snap these raw coords to a road?
+        if provider == 'GOOGLE' and SNAP_TO_ROAD_CENTERLINE and api_key:
+             from .services.google_maps import GoogleMapsService
+             try:
+                 svc = GoogleMapsService(api_key)
+                 # Snap the single point
+                 res = svc.snap_to_roads([(lat, lon)])
+                 if res.success and res.data:
+                     lat, lon = res.data[0]
+             except Exception:
+                 pass # Fallback to raw coords
+        elif provider == 'OSM' and SNAP_TO_ROAD_CENTERLINE:
             snapped = _snap_to_road_centerline(lat, lon, user_agent=user_agent)
             if snapped is not None:
                 lat, lon = snapped
         return GeocodeResult(address=original, lat=lat, lon=lon, display_name=original)
 
-    # 2) Normal path: geocode via Nominatim, then snap result to road centerline.
+    # 2) Provider-based Geocoding
+    if provider == 'GOOGLE':
+        from .services.google_maps import GoogleMapsService
+        if not api_key:
+             raise RouteServiceError("Google Maps provider selected but no API key provided.")
+        
+        service = GoogleMapsService(api_key)
+        result = service.geocode(original)
+        if not result.success:
+             raise RouteServiceError(result.error or f"Google Geocode failed for '{original}'")
+        
+        # Google results are usually "rooftop" or "range_interpolated", fairly accurate.
+        # But if we want road snapping, we can double check.
+        # For now, trust Google's geocode is good enough for entry.
+        return result.data
+
+    # 3) OSM / Nominatim (Legacy)
     query = parse.urlencode({
         "q": original,
         "format": "json",
@@ -193,6 +212,26 @@ def geocode(address: str, user_agent: str) -> GeocodeResult:
             lat, lon = snapped
 
     return GeocodeResult(address=original, lat=lat, lon=lon, display_name=entry.get("display_name", original))
+
+
+    return GeocodeResult(address=original, lat=lat, lon=lon, display_name=entry.get("display_name", original))
+
+
+# Dispatcher Helper for Provider Selection
+def _get_google_service(context=None) -> Optional['GoogleMapsService']: # Type hint requires import check
+    """Get initialized Google service if available and configured."""
+    try:
+        # We need to access the API key from the context/addon prefs
+        # If context is not provided, try to find it or check global config?
+        # Ideally pass api_key explicitly, but for quick integration:
+        if context and hasattr(context.scene, 'blosm'):
+             api_key = context.scene.blosm.google_api_key
+             if api_key:
+                 from .services.google_maps import GoogleMapsService
+                 return GoogleMapsService(api_key)
+    except ImportError:
+        pass
+    return None
 
 
 def decode_polyline(value: str, precision: int = 5) -> List[Tuple[float, float]]:
@@ -239,8 +278,24 @@ def decode_polyline(value: str, precision: int = 5) -> List[Tuple[float, float]]
     return coordinates
 
 
-def fetch_route(start: GeocodeResult, end: GeocodeResult, user_agent: str, waypoints: List[GeocodeResult] = None) -> RouteResult:
+def fetch_route(start: GeocodeResult, end: GeocodeResult, user_agent: str, waypoints: List[GeocodeResult] = None, provider: str = 'OSM', api_key: str = '') -> RouteResult:
     """Fetch driving route from start to end, optionally passing through waypoints"""
+    
+    # GOOGLE MAPS PATH
+    if provider == 'GOOGLE':
+        from .services.google_maps import GoogleMapsService
+        if not api_key:
+             raise RouteServiceError("Google Maps provider selected but no API key provided.")
+        
+        service = GoogleMapsService(api_key)
+        # Google fetch
+        result = service.fetch_route(start, end, waypoints)
+        if result.success:
+            return result.data
+        else:
+             raise RouteServiceError(f"Google Route Failed: {result.error}")
+
+    # OSRM (DEFAULT) PATH
     # Build coordinate string: start;waypoint1;waypoint2;...;end
     coord_list = [f"{start.lon},{start.lat}"]
     if waypoints:
@@ -541,21 +596,17 @@ def bbox_size(bbox: Tuple[float, float, float, float]) -> Tuple[float, float]:
     return width, height
 
 
-def prepare_route(start_address: str, end_address: str, padding_m: float, user_agent: str, waypoint_addresses: List[str] = None) -> RouteContext:
-    """Prepare route context with optional waypoints.
-
-    Wraps geocoding with explicit error messages so the operator can surface
-    clear warnings (e.g., which address failed) instead of failing silently.
-    """
+def prepare_route(start_address: str, end_address: str, padding_m: float, user_agent: str, waypoint_addresses: List[str] = None, provider: str = 'OSM', api_key: str = '') -> RouteContext:
+    """Prepare route context with optional waypoints."""
     # Geocode start/end with targeted messages
     try:
-        start = geocode(start_address, user_agent)
+        start = geocode(start_address, user_agent, provider=provider, api_key=api_key)
     except RouteServiceError as exc:
         raise RouteServiceError(
             f"Start address not found: \"{start_address}\". Please check the spelling."
         ) from exc
     try:
-        end = geocode(end_address, user_agent)
+        end = geocode(end_address, user_agent, provider=provider, api_key=api_key)
     except RouteServiceError as exc:
         raise RouteServiceError(
             f"End address not found: \"{end_address}\". Please check the spelling."
@@ -567,14 +618,14 @@ def prepare_route(start_address: str, end_address: str, padding_m: float, user_a
         for wp_address in waypoint_addresses:
             if wp_address and wp_address.strip():  # Skip empty addresses
                 try:
-                    waypoints.append(geocode(wp_address.strip(), user_agent))
+                    waypoints.append(geocode(wp_address.strip(), user_agent, provider=provider, api_key=api_key))
                 except RouteServiceError as exc:
                     raise RouteServiceError(
                         f"Waypoint address not found: \"{wp_address}\". Please check the spelling."
                     ) from exc
 
     # Fetch route with waypoints
-    route = fetch_route(start, end, user_agent, waypoints=waypoints if waypoints else None)
+    route = fetch_route(start, end, user_agent, waypoints=waypoints if waypoints else None, provider=provider, api_key=api_key)
 
     bbox = compute_bbox(route.points)
     padded_bbox = pad_bbox(bbox, padding_m)

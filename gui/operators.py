@@ -470,3 +470,84 @@ class BLOSM_OT_RouteAdjusterLiveUpdateModal(bpy.types.Operator):
 
     def cancel(self, context):
         return self._cancel(context)
+
+
+class BLOSM_OT_BakeAllGeonodes(bpy.types.Operator):
+    """Bake all geometry nodes modifiers in the scene with custom frame logic"""
+
+    bl_idname = "blosm.bake_all_geonodes"
+    bl_label = "Bake All Geonodes"
+    bl_description = "Bake all geometry nodes modifiers with automatic frame range adjustment for animated bakes"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        scene = context.scene
+        scene_frame_start = scene.frame_start
+        scene_frame_end = scene.frame_end
+        scene_frame_duration = scene_frame_end - scene_frame_start
+
+        # Calculate bake frame range (50 frames longer than timeline)
+        bake_frame_start = scene_frame_start
+        bake_frame_end = scene_frame_end + 50
+
+        total_baked = 0
+        processed_objects = []
+        errors = []
+
+        # Iterate through all objects in the scene
+        for obj in scene.objects:
+            if obj is None:
+                continue
+
+            obj_has_geonodes = False
+            obj_baked_count = 0
+
+            # Check for geometry nodes modifiers
+            for mod in getattr(obj, "modifiers", []):
+                if getattr(mod, "type", None) != "NODES":
+                    continue
+
+                obj_has_geonodes = True
+
+                # Iterate through all bake sessions for this modifier
+                for bake in getattr(mod, "bakes", []):
+                    if bake is None:
+                        continue
+
+                    try:
+                        # Set custom frame range for this bake
+                        if hasattr(bake, "frame_start"):
+                            bake.frame_start = bake_frame_start
+                        if hasattr(bake, "frame_end"):
+                            bake.frame_end = bake_frame_end
+
+                        # Perform the bake operation
+                        bpy.ops.object.geometry_node_bake_single(
+                            session_uid=getattr(obj.id_data, "session_uid", 0) or 0,
+                            modifier_name=mod.name,
+                            bake_id=bake.bake_id,
+                        )
+
+                        obj_baked_count += 1
+                        total_baked += 1
+
+                    except Exception as exc:
+                        error_msg = f"Failed to bake '{mod.name}' on object '{obj.name}': {exc}"
+                        errors.append(error_msg)
+                        print(f"[BLOSM] ERROR: {error_msg}")
+
+                processed_objects.append(obj.name)
+
+            # Report success for this object
+            if obj_has_geonodes and obj_baked_count > 0:
+                print(f"[BLOSM] Baked {obj_baked_count} geometry node modifier(s) on '{obj.name}'")
+
+        # Final report
+        if total_baked > 0:
+            self.report({'INFO'}, f"Baked {total_baked} geometry node modifier(s) across {len(processed_objects)} object(s)")
+            if errors:
+                self.report({'WARNING'}, f"Completed with {len(errors)} errors - see console for details")
+        else:
+            self.report({'INFO'}, "No geometry node modifiers found to bake")
+
+        return {'FINISHED'}
