@@ -6,8 +6,6 @@ Minimal panel definitions for route import functionality only.
 import bpy
 
 
-
-
 ROUTE_PANEL_UI_VERSION = "3.0.1"
 ROUTE_PANEL_LABEL = f"CashCab ({ROUTE_PANEL_UI_VERSION})"
 
@@ -33,39 +31,76 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
         layout = self.layout
         addon = context.scene.blosm
 
-        # Address inputs
-        col = layout.column(align=True)
-        
-        # Start Address & Snap
-        row = col.row(align=True)
-        row.prop(addon, "route_start_address", text="Start Address")
-        row.operator("blosm.snap_address", text="Snap", icon='SNAP_ON').type = 'START'
-        if addon.start_snapped_coords:
-             col.label(text=f"Snapped: {addon.start_snapped_coords}", icon='CHECKMARK')
+        # 1. Route Configuration Box
+        # We use a single box for both addresses as requested
+        route_box = layout.box()
 
-        # Waypoints section
-        waypoints_box = layout.box()
-        waypoints_box.label(text="Waypoints (Optional)", icon='CURVE_PATH')
-        for idx, waypoint in enumerate(addon.route_waypoints):
-            row = waypoints_box.row(align=True)
-            row.prop(waypoint, "address", text=f"{idx+1}")
-            row.operator("blosm.remove_waypoint", text="", icon='X').index = idx
-        waypoints_box.operator("blosm.add_waypoint", text="Add Stop", icon='ADD')
+        # START ADDRESS SECTION
+        try:
+            # Create a specific column for the start address to ensure alignment isolation
+            col_start = route_box.column(align=True)
+            col_start.label(text="Start Address", icon='HOME')
+            
+            row_start = col_start.row(align=True)
+            row_start.prop(addon, "route_start_address", text="")
+            
+            # Operator with explicit error handling
+            try:
+                op_start = row_start.operator("blosm.snap_address", text="", icon='SNAP_ON')
+                op_start.type = 'START'
+            except Exception as e:
+                print(f"Blosm UI Warning: Failed to set op_start.type: {e}")
+                # Don't crash the UI for the button
+                pass
 
-        # End Address & Snap
-        col = layout.column(align=True)
-        row = col.row(align=True)
-        row.prop(addon, "route_end_address", text="End Address")
-        row.operator("blosm.snap_address", text="Snap", icon='SNAP_ON').type = 'END'
-        if addon.end_snapped_coords:
-             col.label(text=f"Snapped: {addon.end_snapped_coords}", icon='CHECKMARK')
-        layout.prop(addon, "route_padding_m")
+            # Show snapped coords if available
+            snapped_start = getattr(addon, "start_snapped_coords", "")
+            if snapped_start:
+                col_start.label(text=f"{snapped_start}", icon='CHECKMARK')
+        except Exception as e:
+            route_box.label(text=f"UI Error (Start): {e}", icon='ERROR')
+            print(f"Blosm UI Error (Start): {e}")
 
-        # Import layer toggles
-        layout.label(text="Auto-importing: Roads, Buildings, Water, RouteCam", icon='IMPORT')
+        # Spacer between sections
+        route_box.separator()
+
+        # END ADDRESS SECTION
+        try:
+            # Create a NEW column for the end address
+            col_end = route_box.column(align=True)
+            col_end.label(text="End Address", icon='HOME')
+            
+            row_end = col_end.row(align=True)
+            row_end.prop(addon, "route_end_address", text="")
+            
+            try:
+                op_end = row_end.operator("blosm.snap_address", text="", icon='SNAP_ON')
+                op_end.type = 'END'
+            except Exception as e:
+                print(f"Blosm UI Warning: Failed to set op_end.type: {e}")
+                pass
+                
+            snapped_end = getattr(addon, "end_snapped_coords", "")
+            if snapped_end:
+                col_end.label(text=f"{snapped_end}", icon='CHECKMARK')
+        except Exception as e:
+            route_box.label(text=f"UI Error (End): {e}", icon='ERROR')
+            print(f"Blosm UI Error (End): {e}")
+
+        # Padding at bottom of box
+        try:
+            route_box.separator()
+            route_box.prop(addon, "route_padding_m")
+        except Exception as e:
+            route_box.label(text=f"UI Error (Padding): {e}", icon='ERROR')
+
+
+        # 2. Main Toggles & Imports
+        layout.separator()
         layout.prop(addon, "route_create_preview_animation", text="Create Animated Route & Assets")
 
-        # Animation settings - grouped in a collapsible tab-like box
+
+        # 3. Animation Controls (Collapsible)
         anim_box = layout.box()
         header = anim_box.row()
         header.prop(
@@ -91,7 +126,8 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
             trail_col.prop(context.scene, "blosm_car_trail_end_adjust", text="End Adjust")
             trail_col.prop(context.scene, "blosm_car_trail_tail_shift", text="Tail Shift")
 
-        # City extension controls in a collapsible section (similar to Animation Controls)
+
+        # 4. Extend City (Collapsible)
         extend_box = layout.box()
         header = extend_box.row()
         header.prop(
@@ -103,13 +139,13 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
         )
         header.label(text="Extend City", icon='ARROW_LEFTRIGHT')
 
-        # Disable controls until a prior import stored bbox/tiles
-        scene = context.scene
-        bbox = scene.get("blosm_import_bbox") if scene else None
-        tiles = scene.get("blosm_import_tiles") if scene else None
-        # Relax type check for IDPropertyArray support
-        has_import_state = bbox is not None and len(bbox) == 4 and bool(tiles)
         if addon.ui_show_extend_city:
+            # Check state
+            scene = context.scene
+            bbox = scene.get("blosm_import_bbox") if scene else None
+            tiles = scene.get("blosm_import_tiles") if scene else None
+            has_import_state = bbox is not None and len(bbox) == 4 and bool(tiles)
+
             body = extend_box.column(align=True)
             body.label(text="Tiles are ~1.4 km; raise distance if no tiles change.", icon='INFO')
 
@@ -124,7 +160,8 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
             if not has_import_state:
                 body.label(text="Run Fetch Route and Map first to enable extend.", icon='INFO')
 
-        # Extra Features (collapsible, after Extend City)
+
+        # 5. Extra Features (Collapsible)
         extra_box = layout.box()
         header = extra_box.row()
         header.prop(
@@ -141,6 +178,7 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
             body.prop(addon, "route_snap_to_road_centerline", text="Snap to road centerlines")
             body.separator()
             body.prop(addon, "route_trim_end_uturns", text="Trim Start/End U-Turns")
+            
             if addon.route_trim_end_uturns:
                 body.prop(addon, "route_trim_window_fraction", text="Trim Window")
                 body.prop(addon, "route_trim_max_uturn_fraction", text="Max U-Turn Size")
@@ -180,94 +218,15 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
             if getattr(addon, "route_adjuster_last_error", ""):
                 controls.label(text=f"Last error: {addon.route_adjuster_last_error}", icon='ERROR')
 
-        # Pre-flight confirmations (assets + render settings)
+        # 6. Pre-flight Checks
         preflight_box = layout.box()
         preflight_box.label(text="Pre-flight Checks", icon='INFO')
 
-        preflight_box.operator(
-            "blosm.apply_render_settings",
-            text="Apply Render Settings",
-            icon='RENDER_STILL',
-        )
-        preflight_box.operator(
-            "blosm.bake_all_geonodes",
-            text="Bake All Geonodes",
-            icon='MODIFIER'
-        )
-        preflight_box.operator(
-            "blosm.set_viewport_clip",
-            text="Set Clip Start/End",
-            icon='RESTRICT_VIEW_OFF',
-        )
+        preflight_box.operator("blosm.apply_render_settings", text="Apply Render Settings", icon='RENDER_STILL')
+        preflight_box.operator("blosm.bake_all_geonodes", text="Bake All Geonodes", icon='MODIFIER')
+        preflight_box.operator("blosm.set_viewport_clip", text="Set Clip Start/End", icon='RESTRICT_VIEW_OFF')
 
-
-        # RouteCam Controls (hidden by default – handled by separate addon)
-        if False and addon.route_enable_routecam:
-            # Determine target camera: Active Object > Scene Camera
-            target_cam = None
-            if context.active_object and context.active_object.type == 'CAMERA':
-                target_cam = context.active_object
-            elif context.scene.camera:
-                target_cam = context.scene.camera
-
-            rc_box = anim_box.box()
-            rc_box.label(text="RouteCam Director", icon='CAMERA_DATA')
-            
-            # Batch Settings (Always Visible)
-            row = rc_box.row()
-            row.prop(addon, "routecam_batch_v2_count")
-            row.prop(addon, "routecam_batch_viz_count")
-
-            if target_cam:
-                rc_box.label(text=f"Camera: {target_cam.name}", icon='OUTLINER_OB_CAMERA')
-                
-                # Ensure property group exists
-                if hasattr(target_cam, 'routecam_unified'):
-                    s = target_cam.routecam_unified
-                    
-                    # Engine Select
-                    row = rc_box.row()
-                    row.prop(s, "engine_mode", expand=True)
-                    
-                    rc_box.prop(s, "target_curve")
-                    rc_box.prop(s, "duration")
-
-                    # Dynamic UI
-                    if s.engine_mode == 'V2':
-                        v2_col = rc_box.column(align=True)
-                        v2_col.prop(s, "margin")
-                        v2_col.prop(s, "zoom_ratio")
-                        
-                        row = v2_col.row(align=True)
-                        row.prop(s, "pitch_start")
-                        row.prop(s, "pitch_end")
-                        
-                        v2_col.prop(s, "yaw_offset")
-                        
-                        row = v2_col.row(align=True)
-                        row.prop(s, "beat_drift")
-                        row.prop(s, "beat_zoom")
-                        
-                        op_row = rc_box.row(align=True)
-                        op_row.operator("routecam.generate", text="Analyze", icon='FILE_REFRESH')
-                        if s.v2_cached_plan:
-                            op_row.operator("routecam.bake_v2", text="Bake", icon='ACTION')
-                            
-                    elif s.engine_mode == 'VIZ':
-                        viz_col = rc_box.column(align=True)
-                        viz_col.prop(s, "sect1_margin")
-                        viz_col.prop(s, "sect1_angle")
-                        viz_col.prop(s, "sect2_time")
-                        viz_col.prop(s, "sect2_push")
-                        
-                        rc_box.operator("routecam.generate", text="Generate (Direct Bake)", icon='FILE_REFRESH')
-                else:
-                    rc_box.label(text="RouteCam properties missing", icon='ERROR')
-            else:
-                rc_box.label(text="No Camera Selected", icon='INFO')
-                rc_box.operator("object.camera_add", text="Create Camera", icon='ADD')
-
-        # Main action buttons
+        # 7. Main Action Buttons
         layout.separator()
         layout.operator("blosm.fetch_route_map", text="Fetch Route & Map", icon='IMPORT')
         layout.operator("blosm.clean_and_clear", text="Clean & Clear", icon='TRASH')
