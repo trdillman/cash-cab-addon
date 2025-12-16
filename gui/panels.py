@@ -35,19 +35,13 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
 
         # Address inputs
         col = layout.column(align=True)
-        # Address inputs
-        col = layout.column(align=True)
         
-        # Provider selection
-        col.prop(addon, "route_provider", text="Provider")
-        
-        if addon.route_provider == 'GOOGLE':
-            col.prop(addon, "google_api_key", text="API Key")
-            if not addon.google_api_key:
-                col.label(text="API Key required for Google Maps", icon='ERROR')
-        
-        col.separator()
-        col.prop(addon, "route_start_address", text="Start Address")
+        # Start Address & Snap
+        row = col.row(align=True)
+        row.prop(addon, "route_start_address", text="Start Address")
+        row.operator("blosm.snap_address", text="Snap", icon='SNAP_ON').type = 'START'
+        if addon.start_snapped_coords:
+             col.label(text=f"Snapped: {addon.start_snapped_coords}", icon='CHECKMARK')
 
         # Waypoints section
         waypoints_box = layout.box()
@@ -58,8 +52,13 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
             row.operator("blosm.remove_waypoint", text="", icon='X').index = idx
         waypoints_box.operator("blosm.add_waypoint", text="Add Stop", icon='ADD')
 
+        # End Address & Snap
         col = layout.column(align=True)
-        col.prop(addon, "route_end_address", text="End Address")
+        row = col.row(align=True)
+        row.prop(addon, "route_end_address", text="End Address")
+        row.operator("blosm.snap_address", text="Snap", icon='SNAP_ON').type = 'END'
+        if addon.end_snapped_coords:
+             col.label(text=f"Snapped: {addon.end_snapped_coords}", icon='CHECKMARK')
         layout.prop(addon, "route_padding_m")
 
         # Import layer toggles
@@ -184,11 +183,7 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
         # Pre-flight confirmations (assets + render settings)
         preflight_box = layout.box()
         preflight_box.label(text="Pre-flight Checks", icon='INFO')
-        preflight_box.operator(
-            "blosm.assets_update_notice",
-            text="Confirm Updated Assets",
-            icon='FILE_FOLDER',
-        )
+
         preflight_box.operator(
             "blosm.apply_render_settings",
             text="Apply Render Settings",

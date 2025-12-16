@@ -551,3 +551,88 @@ class BLOSM_OT_BakeAllGeonodes(bpy.types.Operator):
             self.report({'INFO'}, "No geometry node modifiers found to bake")
 
         return {'FINISHED'}
+
+
+
+
+
+class BLOSM_OT_SnapAddress(bpy.types.Operator):
+    """Geocode and snap address using Google Maps API"""
+    bl_idname = "blosm.snap_address"
+    bl_label = "Snap Address"
+    bl_description = "Convert address to road-snapped GPS coordinates using Google API"
+    bl_options = {'REGISTER'}
+
+    type: bpy.props.EnumProperty(
+        name="Type",
+        items=[('START', "Start", "Start Address"), ('END', "End", "End Address")],
+        default='START'
+    )
+
+    def execute(self, context):
+        from ..gui.preferences import BlosmPreferences
+        
+        # Get preferences correctly
+        # The preferences are on the addon object, not the scene
+        prefs = context.preferences.addons[__package__.split('.')[0]].preferences
+        api_key = prefs.google_api_key
+        
+        if not api_key:
+            self.report({'ERROR'}, "Google API Key not found in Preferences")
+            return {'CANCELLED'}
+
+        addon = context.scene.blosm
+        if self.type == 'START':
+            address = addon.route_start_address
+        else:
+            address = addon.route_end_address
+            
+        print(f"\n[BLOSM Snap] processing {self.type}: '{address}'")
+
+        try:
+            from ..route.services.google_maps import GoogleMapsService
+            svc = GoogleMapsService(api_key)
+
+            # 1. Geocode
+            geo_res = svc.geocode(address)
+            if not geo_res.success:
+                msg = f"Geocode failed: {geo_res.error}"
+                self.report({'WARNING'}, msg)
+                return {'CANCELLED'}
+
+            lat, lon = geo_res.data.lat, geo_res.data.lon
+
+            # 2. Snap
+            snap_res = svc.snap_to_roads([(lat, lon)])
+            
+            final_coords = f"{lat:.6f}, {lon:.6f} (Raw)"
+            if snap_res.success and snap_res.data:
+                s_lat, s_lon = snap_res.data[0]
+                final_coords = f"{s_lat:.6f}, {s_lon:.6f} (Snaped)"
+                self.report({'INFO'}, f"Snapped to road: {s_lat:.6f}, {s_lon:.6f}")
+            else:
+                 self.report({'INFO'}, f"Using raw geocode (no road nearby): {lat:.6f}, {lon:.6f}")
+
+            # Update Property
+            if self.type == 'START':
+                addon.start_snapped_coords = final_coords
+                addon.route_start_address_lat = lat
+                addon.route_start_address_lon = lon
+                if snap_res.success and snap_res.data:
+                     addon.route_start_address_lat = snap_res.data[0][0]
+                     addon.route_start_address_lon = snap_res.data[0][1]
+            else:
+                addon.end_snapped_coords = final_coords
+                addon.route_end_address_lat = lat
+                addon.route_end_address_lon = lon
+                if snap_res.success and snap_res.data:
+                     addon.route_end_address_lat = snap_res.data[0][0]
+                     addon.route_end_address_lon = snap_res.data[0][1]
+
+        except Exception as e:
+            self.report({'ERROR'}, f"Snap Exception: {e}")
+            import traceback
+            traceback.print_exc()
+            return {'CANCELLED'}
+
+        return {'FINISHED'}

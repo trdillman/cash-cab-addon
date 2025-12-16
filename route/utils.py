@@ -596,17 +596,23 @@ def bbox_size(bbox: Tuple[float, float, float, float]) -> Tuple[float, float]:
     return width, height
 
 
-def prepare_route(start_address: str, end_address: str, padding_m: float, user_agent: str, waypoint_addresses: List[str] = None, provider: str = 'OSM', api_key: str = '') -> RouteContext:
+def prepare_route(start_address: str, end_address: str, padding_m: float, user_agent: str, waypoint_addresses: List[str] = None, provider: str = 'OSM', api_key: str = '', start_coords: Optional[Tuple[float, float]] = None, end_coords: Optional[Tuple[float, float]] = None) -> RouteContext:
     """Prepare route context with optional waypoints."""
     # Geocode start/end with targeted messages
     try:
-        start = geocode(start_address, user_agent, provider=provider, api_key=api_key)
+        if start_coords and len(start_coords) == 2:
+            start = GeocodeResult(address=start_address, lat=float(start_coords[0]), lon=float(start_coords[1]), display_name=start_address)
+        else:
+            start = geocode(start_address, user_agent, provider=provider, api_key=api_key)
     except RouteServiceError as exc:
         raise RouteServiceError(
             f"Start address not found: \"{start_address}\". Please check the spelling."
         ) from exc
     try:
-        end = geocode(end_address, user_agent, provider=provider, api_key=api_key)
+        if end_coords and len(end_coords) == 2:
+            end = GeocodeResult(address=end_address, lat=float(end_coords[0]), lon=float(end_coords[1]), display_name=end_address)
+        else:
+            end = geocode(end_address, user_agent, provider=provider, api_key=api_key)
     except RouteServiceError as exc:
         raise RouteServiceError(
             f"End address not found: \"{end_address}\". Please check the spelling."

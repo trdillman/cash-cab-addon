@@ -73,6 +73,20 @@ def _on_route_adjuster_live_update_toggle(self, context):
 
 
 
+def _on_start_address_update(self, context):
+    """Clear snapped coordinates when address text changes"""
+    self.start_snapped_coords = ""
+    self.route_start_address_lat = 0.0
+    self.route_start_address_lon = 0.0
+
+
+def _on_end_address_update(self, context):
+    """Clear snapped coordinates when address text changes"""
+    self.end_snapped_coords = ""
+    self.route_end_address_lat = 0.0
+    self.route_end_address_lon = 0.0
+
+
 def getDataTypes(self, context):
     """Return available data types for import"""
     return [
@@ -83,7 +97,7 @@ def getDataTypes(self, context):
 
 class BlosmRouteWaypoint(bpy.types.PropertyGroup):
     """Single waypoint/stop address for route"""
-
+    
     address: bpy.props.StringProperty(
         name="Waypoint Address",
         description="Intermediate stop address between start and end",
@@ -144,22 +158,20 @@ class BlosmProperties(bpy.types.PropertyGroup):
     )
 
     # Route Provider settings
-    route_provider: bpy.props.EnumProperty(
-        name="Route Provider",
-        items=(
-            ("OSM", "OSM (Nominatim/OSRM)", "Use OpenStreetMap for geocoding and OSRM for routing"),
-            ("GOOGLE", "Google Maps", "Use Google Maps Platform for geocoding, routing, and snapping"),
-        ),
-        description="Service provider for route calculations",
-        default="OSM",
+    
+    # Snapped coordinates display
+    start_snapped_coords: bpy.props.StringProperty(
+        name="Snapped Coords",
+        description="Coordinates snapped to nearest road via Google API",
+        default=""
     )
 
-    google_api_key: bpy.props.StringProperty(
-        name="Google Maps API Key",
-        description="API Key for Google Maps Platform (Geocoding, Directions, Roads)",
-        default="",
-        subtype='PASSWORD',
+    end_snapped_coords: bpy.props.StringProperty(
+        name="Snapped Coords",
+        description="Coordinates snapped to nearest road via Google API",
+        default=""
     )
+
 
     # Coordinate bounds
     minLat: bpy.props.FloatProperty(
@@ -280,12 +292,14 @@ class BlosmProperties(bpy.types.PropertyGroup):
         name="Start Address",
         description="Starting address for route geocoding",
         default="1 Dundas St. E, Toronto",
+        update=_on_start_address_update,
     )
 
     route_end_address: bpy.props.StringProperty(
         name="End Address",
         description="Ending address for route geocoding",
         default="500 Yonge St, Toronto",
+        update=_on_end_address_update,
     )
 
     route_snap_to_road_centerline: bpy.props.BoolProperty(

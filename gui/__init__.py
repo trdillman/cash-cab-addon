@@ -7,6 +7,7 @@ import bpy
 from bpy.app.handlers import persistent
 
 from .properties import BlosmRouteWaypoint, BlosmDefaultLevelsEntry, BlosmProperties
+from .preferences import BlosmPreferences
 from .panels import (
     BLOSM_UL_DefaultLevels,
     BLOSM_PT_RouteImport,
@@ -27,6 +28,7 @@ from .operators import (
     BLOSM_OT_RouteAdjusterClearVias,
     BLOSM_OT_RouteAdjusterLiveUpdateModal,
     BLOSM_OT_BakeAllGeonodes,
+    BLOSM_OT_SnapAddress,
 )
 from .cleanup_operator import BLOSM_OT_CleanAndClear
 
@@ -90,8 +92,10 @@ _classes = (
     BLOSM_OT_RouteAdjusterLiveUpdateModal,
     BLOSM_OT_BakeAllGeonodes,
     BLOSM_OT_CleanAndClear,
+    BLOSM_OT_SnapAddress,
     BLOSM_PT_RouteImport,
-    BlosmProperties
+    BlosmProperties,
+    BlosmPreferences
 )
 
 

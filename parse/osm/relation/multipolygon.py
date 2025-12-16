@@ -1,8 +1,7 @@
 from ...osm import Osm
 from . import Relation
 from ... import linestring as linestring_type, multilinestring, polygon, multipolygon
-# Import the parse package explicitly (package has no symbol named 'parse').
-import cash_cab_addon.parse as parse
+
 
 
 class Linestring:
@@ -433,4 +432,4 @@ class Multipolygon(Relation):
         else:
             return
         self.ls = _l
-        self.t = parse.polygon
+        self.t = polygon

@@ -7,7 +7,14 @@ import bpy
 import tempfile
 import math
 import time
-from ..app import blender as blenderApp
+try:
+    from ..app import blender as blenderApp
+except ImportError:
+    # Fallback for standalone verification/testing where relative imports fail
+    import types
+    blenderApp = types.ModuleType('blenderApp')
+    blenderApp.app = types.SimpleNamespace()
+    blenderApp.app.addonName = "cash-cab-addon"
 
 # Import route functionality from local modules
 from .utils import RouteServiceError, prepare_route, OverpassFetcher, _meters_to_lat_delta, _meters_to_lon_delta, _tile_bbox
@@ -515,9 +522,25 @@ class BLOSM_OT_FetchRouteMap(bpy.types.Operator):
             route_utils.SNAP_TO_ROAD_CENTERLINE = bool(
                 getattr(addon, "route_snap_to_road_centerline", True)
             )
-            # Extract provider settings
-            provider = getattr(addon, "route_provider", "OSM")
-            api_key = getattr(addon, "google_api_key", "")
+            # Extract API Key from Addon Preferences
+            from ..app import blender as blenderApp
+            addon_name = getattr(blenderApp.app, 'addonName', '') or "cash-cab-addon"
+            api_key = ""
+            if addon_name:
+                prefs = context.preferences.addons.get(addon_name)
+                if prefs and hasattr(prefs, 'preferences'):
+                    api_key = getattr(prefs.preferences, "google_api_key", "")
+
+            # Resolve coordinates if snapped (implied by non-empty display string)
+            start_coords = None
+            if getattr(addon, "start_snapped_coords", ""):
+                 start_coords = (addon.route_start_address_lat, addon.route_start_address_lon)
+
+            end_coords = None
+            if getattr(addon, "end_snapped_coords", ""):
+                 end_coords = (addon.route_end_address_lat, addon.route_end_address_lon)
+
+            provider = "OSM"  # Default to OSM/OSRM for massive data/routing
 
             try:
                 route_ctx = prepare_route(
@@ -528,6 +551,8 @@ class BLOSM_OT_FetchRouteMap(bpy.types.Operator):
                     waypoint_addresses=waypoint_addresses if waypoint_addresses else None,
                     provider=provider,
                     api_key=api_key,
+                    start_coords=start_coords,
+                    end_coords=end_coords,
                 )
 
                 # Persist the final geocoded (and snapped) coordinates onto the addon
