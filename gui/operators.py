@@ -247,6 +247,23 @@ class BLOSM_OT_ApplyUTurnTrim(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def _recompute_route_camera_if_possible(context) -> bool:
+    """Rebuild the Route Camera animation after route geometry changes."""
+    try:
+        # Mirror RouteRig deps: MARKER_START / MARKER_END / ROUTE(or Route) / CAR_LEAD
+        start_obj = bpy.data.objects.get("MARKER_START")
+        end_obj = bpy.data.objects.get("MARKER_END")
+        route_obj = bpy.data.objects.get("ROUTE") or bpy.data.objects.get("Route")
+        car_obj = bpy.data.objects.get("CAR_LEAD")
+        if not (start_obj and end_obj and route_obj and car_obj):
+            return False
+
+        res = bpy.ops.routerig.generate_camera_animation()
+        return "FINISHED" in (res or set())
+    except Exception:
+        return False
+
+
 class BLOSM_OT_RouteAdjusterCreateControls(bpy.types.Operator):
     """Create or resync route control empties (start/end)."""
 
@@ -294,6 +311,11 @@ class BLOSM_OT_RouteAdjusterRecompute(bpy.types.Operator):
                 return {'CANCELLED'}
             if addon is not None:
                 addon.route_adjuster_last_error = ""
+            if not _recompute_route_camera_if_possible(context):
+                self.report(
+                    {'WARNING'},
+                    "Route recomputed, but Route Camera was not updated (missing MARKER_START/MARKER_END/ROUTE/CAR_LEAD)",
+                )
             self.report({'INFO'}, "Route recomputed from controls")
             return {'FINISHED'}
         except Exception as exc:
@@ -447,6 +469,7 @@ class BLOSM_OT_RouteAdjusterLiveUpdateModal(bpy.types.Operator):
                         addon.route_adjuster_last_error = "Missing ROUTE or controls"
                     else:
                         addon.route_adjuster_last_error = ""
+                        _recompute_route_camera_if_possible(context)
                 except Exception as exc:
                     addon.route_adjuster_last_error = str(exc)
                 cls._pending = False
@@ -576,11 +599,9 @@ class BLOSM_OT_SnapAddress(bpy.types.Operator):
         # The preferences are on the addon object, not the scene
         prefs = context.preferences.addons[__package__.split('.')[0]].preferences
         api_key = prefs.google_api_key
+        from ..route import utils as route_utils
+        api_key = route_utils.resolve_google_api_key(context, api_key)
         
-        if not api_key:
-            self.report({'ERROR'}, "Google API Key not found in Preferences")
-            return {'CANCELLED'}
-
         addon = context.scene.blosm
         if self.type == 'START':
             address = addon.route_start_address
@@ -590,44 +611,24 @@ class BLOSM_OT_SnapAddress(bpy.types.Operator):
         print(f"\n[BLOSM Snap] processing {self.type}: '{address}'")
 
         try:
-            from ..route.services.google_maps import GoogleMapsService
-            svc = GoogleMapsService(api_key)
-
-            # 1. Geocode
-            geo_res = svc.geocode(address)
-            if not geo_res.success:
-                msg = f"Geocode failed: {geo_res.error}"
-                self.report({'WARNING'}, msg)
-                return {'CANCELLED'}
-
-            lat, lon = geo_res.data.lat, geo_res.data.lon
-
-            # 2. Snap
-            snap_res = svc.snap_to_roads([(lat, lon)])
+            from ..route.utils import snap_address_logic
+            res = snap_address_logic(address, api_key)
             
-            final_coords = f"{lat:.6f}, {lon:.6f} (Raw)"
-            if snap_res.success and snap_res.data:
-                s_lat, s_lon = snap_res.data[0]
-                final_coords = f"{s_lat:.6f}, {s_lon:.6f} (Snaped)"
-                self.report({'INFO'}, f"Snapped to road: {s_lat:.6f}, {s_lon:.6f}")
-            else:
-                 self.report({'INFO'}, f"Using raw geocode (no road nearby): {lat:.6f}, {lon:.6f}")
+            if not res["success"]:
+                self.report({'WARNING'}, res["error"])
+                return {'CANCELLED'}
+            
+            self.report({'INFO'}, f"Result: {res['display_text']}")
 
             # Update Property
             if self.type == 'START':
-                addon.start_snapped_coords = final_coords
-                addon.route_start_address_lat = lat
-                addon.route_start_address_lon = lon
-                if snap_res.success and snap_res.data:
-                     addon.route_start_address_lat = snap_res.data[0][0]
-                     addon.route_start_address_lon = snap_res.data[0][1]
+                addon.start_snapped_coords = res["display_text"]
+                addon.route_start_address_lat = res["lat"]
+                addon.route_start_address_lon = res["lon"]
             else:
-                addon.end_snapped_coords = final_coords
-                addon.route_end_address_lat = lat
-                addon.route_end_address_lon = lon
-                if snap_res.success and snap_res.data:
-                     addon.route_end_address_lat = snap_res.data[0][0]
-                     addon.route_end_address_lon = snap_res.data[0][1]
+                addon.end_snapped_coords = res["display_text"]
+                addon.route_end_address_lat = res["lat"]
+                addon.route_end_address_lon = res["lon"]
 
         except Exception as e:
             self.report({'ERROR'}, f"Snap Exception: {e}")

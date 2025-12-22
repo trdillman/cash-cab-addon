@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import json
 import gzip
 import xml.etree.ElementTree as ET
@@ -29,7 +30,7 @@ _last_nominatim_request = 0.0
 _last_overpass_request = 0.0
 
 # Global toggle that route operators can override per-call based on addon settings.
-SNAP_TO_ROAD_CENTERLINE: bool = True
+SNAP_TO_ROAD_CENTERLINE: bool = False
 
 # Prefer snapping to primary road classes to avoid alleys/service roads near buildings.
 _SNAP_HIGHWAY_ALLOWLIST = (
@@ -80,6 +81,104 @@ class RouteContext:
     bbox_area_km2: float
     tile_count: int
     tiles: Sequence[Tuple[float, float, float, float]]
+
+
+def snap_address_logic(address: str, api_key: str) -> dict:
+    """
+    Perform geocoding and snapping logic using Google Maps Service.
+    Returns a dict with keys: success, lat, lon, display_text, error
+    """
+    result = {
+        "success": False,
+        "lat": 0.0,
+        "lon": 0.0,
+        "display_text": "",
+        "error": ""
+    }
+    
+    if not api_key:
+        result["error"] = "Google API Key not found"
+        return result
+
+    try:
+        from .services.google_maps import GoogleMapsService
+        svc = GoogleMapsService(api_key)
+
+        # 1. Geocode
+        geo_res = svc.geocode(address)
+        if not geo_res.success:
+            result["error"] = f"Geocode failed: {geo_res.error}"
+            return result
+
+        lat, lon = geo_res.data.lat, geo_res.data.lon
+
+        # 2. Snap
+        snap_res = svc.snap_to_roads([(lat, lon)])
+        
+        final_coords = f"{lat:.6f}, {lon:.6f} (Raw)"
+        if snap_res.success and snap_res.data:
+            s_lat, s_lon = snap_res.data[0]
+            final_coords = f"{s_lat:.6f}, {s_lon:.6f} (Snaped)"
+            # Update lat/lon to snapped values
+            lat = s_lat
+            lon = s_lon
+        
+        result["success"] = True
+        result["lat"] = lat
+        result["lon"] = lon
+        result["display_text"] = final_coords
+        
+    except Exception as e:
+        result["error"] = f"Snap Exception: {e}"
+        
+    return result
+
+
+def resolve_google_api_key(context=None, api_key: str = "") -> str:
+    """
+    Resolve Google Maps API key for snapping/geocoding.
+
+    Precedence:
+      1) Explicit api_key argument
+      2) Blender addon preferences (if context provided and available)
+      3) Environment variable DEFAULT_CONFIG.google_api.api_key_env_var
+      4) DEFAULT_CONFIG.google_api.api_key_default (hardcoded, for local testing)
+    """
+    if api_key and str(api_key).strip():
+        return str(api_key).strip()
+
+    # 2) Blender addon preferences
+    try:
+        addons = getattr(getattr(context, "preferences", None), "addons", None)
+        if addons:
+            for addon in addons.values():
+                prefs = getattr(addon, "preferences", None)
+                if prefs and hasattr(prefs, "google_api_key"):
+                    val = getattr(prefs, "google_api_key", "")
+                    if val and str(val).strip():
+                        return str(val).strip()
+    except Exception:
+        pass
+
+    # 3) Environment variable
+    try:
+        env_var = DEFAULT_CONFIG.google_api.api_key_env_var
+        if env_var:
+            val = os.environ.get(env_var, "")
+            if val and val.strip():
+                return val.strip()
+    except Exception:
+        pass
+
+    # 4) Hardcoded default
+    try:
+        val = DEFAULT_CONFIG.google_api.api_key_default
+        if val and str(val).strip():
+            return str(val).strip()
+    except Exception:
+        pass
+
+    return ""
 
 
 def _throttle_nominatim():
@@ -221,14 +320,10 @@ def geocode(address: str, user_agent: str, provider: str = 'OSM', api_key: str =
 def _get_google_service(context=None) -> Optional['GoogleMapsService']: # Type hint requires import check
     """Get initialized Google service if available and configured."""
     try:
-        # We need to access the API key from the context/addon prefs
-        # If context is not provided, try to find it or check global config?
-        # Ideally pass api_key explicitly, but for quick integration:
-        if context and hasattr(context.scene, 'blosm'):
-             api_key = context.scene.blosm.google_api_key
-             if api_key:
-                 from .services.google_maps import GoogleMapsService
-                 return GoogleMapsService(api_key)
+        api_key = resolve_google_api_key(context)
+        if api_key:
+            from .services.google_maps import GoogleMapsService
+            return GoogleMapsService(api_key)
     except ImportError:
         pass
     return None

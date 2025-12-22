@@ -34,6 +34,12 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
         # 1. Route Configuration Box
         # We use a single box for both addresses as requested
         route_box = layout.box()
+        
+        # Add Auto-Snap toggle to header row (if possible) or just inside
+        row = route_box.row()
+        row.label(text="Route Configuration", icon='SETTINGS')
+        row.prop(addon, "auto_snap_addresses", text="Auto Snap", icon='SNAP_ON')
+        route_box.separator()
 
         # START ADDRESS SECTION
         try:
@@ -128,13 +134,22 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
             trail_col.prop(context.scene, "blosm_car_trail_tail_shift", text="Tail Shift")
 
 
-        # 3.5 Camera Controls
+        # 3.5 Camera Controls (Collapsible)
         camera_box = layout.box()
-        camera_box.label(text="Route Camera", icon='CAMERA_DATA')
+        header = camera_box.row()
+        header.prop(
+            addon,
+            "ui_show_route_camera",
+            text="",
+            icon='TRIA_DOWN' if addon.ui_show_route_camera else 'TRIA_RIGHT',
+            emboss=False,
+        )
+        header.label(text="Route Camera", icon='CAMERA_DATA')
         
-        row = camera_box.row(align=True)
-        row.operator("routerig.spawn_test_camera", text="Spawn Camera", icon='CAMERA_DATA')
-        row.operator("routerig.generate_camera_animation", text="Animate Camera", icon='ANIM')
+        if addon.ui_show_route_camera:
+            row = camera_box.row(align=True)
+            row.operator("routerig.spawn_test_camera", text="Spawn Camera", icon='CAMERA_DATA')
+            row.operator("routerig.generate_camera_animation", text="Animate Camera", icon='ANIM')
 
 
         # 4. Extend City (Collapsible)
@@ -186,17 +201,7 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
         if addon.ui_show_extra_features:
             body = extra_box.column(align=True)
             body.prop(addon, "route_snap_to_road_centerline", text="Snap to road centerlines")
-            body.separator()
-            body.prop(addon, "route_trim_end_uturns", text="Trim Start/End U-Turns")
             
-            if addon.route_trim_end_uturns:
-                body.prop(addon, "route_trim_window_fraction", text="Trim Window")
-                body.prop(addon, "route_trim_max_uturn_fraction", text="Max U-Turn Size")
-                body.prop(addon, "route_trim_corner_angle_min", text="Corner Angle Min")
-                body.prop(addon, "route_trim_direction_reverse_deg", text="Direction Reverse")
-            body.operator("blosm.apply_uturn_trim", text="Reapply Trim/Restore", icon='FILE_REFRESH')
-
-            body.separator()
             labels_box = body.box()
             labels_box.label(text="Street Labels", icon='FONT_DATA')
             labels_box.prop(addon, "ui_show_street_labels", text="Show Street Labels")
@@ -228,11 +233,22 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
             if getattr(addon, "route_adjuster_last_error", ""):
                 controls.label(text=f"Last error: {addon.route_adjuster_last_error}", icon='ERROR')
 
+            body.separator()
+            # Trim U-Turns (Moved to bottom)
+            body.prop(addon, "route_trim_end_uturns", text="Trim Start/End U-Turns")
+            
+            if addon.route_trim_end_uturns:
+                body.prop(addon, "route_trim_window_fraction", text="Trim Window")
+                body.prop(addon, "route_trim_max_uturn_fraction", text="Max U-Turn Size")
+                body.prop(addon, "route_trim_corner_angle_min", text="Corner Angle Min")
+                body.prop(addon, "route_trim_direction_reverse_deg", text="Direction Reverse")
+            body.operator("blosm.apply_uturn_trim", text="Reapply Trim/Restore", icon='FILE_REFRESH')
+
         # 6. Pre-flight Checks
         preflight_box = layout.box()
         preflight_box.label(text="Pre-flight Checks", icon='INFO')
 
-        preflight_box.operator("blosm.apply_render_settings", text="Apply Render Settings", icon='RENDER_STILL')
+        # Removed Apply Render Settings button (now automatic)
         preflight_box.operator("blosm.bake_all_geonodes", text="Bake All Geonodes", icon='MODIFIER')
         preflight_box.operator("blosm.set_viewport_clip", text="Set Clip Start/End", icon='RESTRICT_VIEW_OFF')
 

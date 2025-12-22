@@ -17,7 +17,7 @@ except ImportError:
     blenderApp.app.addonName = "cash-cab-addon"
 
 # Import route functionality from local modules
-from .utils import RouteServiceError, prepare_route, OverpassFetcher, _meters_to_lat_delta, _meters_to_lon_delta, _tile_bbox
+from .utils import RouteServiceError, prepare_route, OverpassFetcher, _meters_to_lat_delta, _meters_to_lon_delta, _tile_bbox, snap_address_logic
 from .config import DEFAULT_CONFIG
 from . import buildings as route_buildings, water_manager
 try:
@@ -553,12 +553,11 @@ class BLOSM_OT_FetchRouteMap(bpy.types.Operator):
             # Collect waypoint addresses
             waypoint_addresses = [wp.address for wp in addon.route_waypoints if wp.address.strip()]
 
-            # Respect user toggle for snapping to road centerlines
+            # Disable automatic centerline snapping (use manual 'Snap Address' instead)
             from . import utils as route_utils
             prev_snap = getattr(route_utils, "SNAP_TO_ROAD_CENTERLINE", True)
-            route_utils.SNAP_TO_ROAD_CENTERLINE = bool(
-                getattr(addon, "route_snap_to_road_centerline", True)
-            )
+            route_utils.SNAP_TO_ROAD_CENTERLINE = False
+            
             # Extract API Key from Addon Preferences
             from ..app import blender as blenderApp
             addon_name = getattr(blenderApp.app, 'addonName', '') or "cash-cab-addon"
@@ -566,7 +565,32 @@ class BLOSM_OT_FetchRouteMap(bpy.types.Operator):
             if addon_name:
                 prefs = context.preferences.addons.get(addon_name)
                 if prefs and hasattr(prefs, 'preferences'):
-                    api_key = getattr(prefs.preferences, "google_api_key", "")
+                    api_key = getattr(prefs.preferences, "google_api_key", "")  
+            api_key = route_utils.resolve_google_api_key(context, api_key)
+
+            # AUTO SNAP LOGIC
+            if getattr(addon, "auto_snap_addresses", True) and api_key:
+                # Snap Start Address if not already snapped
+                if not getattr(addon, "start_snapped_coords", "") and start_address:
+                    res_start = snap_address_logic(start_address, api_key)
+                    if res_start["success"]:
+                        addon.start_snapped_coords = res_start["display_text"]
+                        addon.route_start_address_lat = res_start["lat"]
+                        addon.route_start_address_lon = res_start["lon"]
+                        print(f"[BLOSM] Auto-snapped Start: {res_start['display_text']}")
+                    else:
+                        print(f"[BLOSM] Auto-snap Start failed: {res_start.get('error')}")
+
+                # Snap End Address if not already snapped
+                if not getattr(addon, "end_snapped_coords", "") and end_address:
+                    res_end = snap_address_logic(end_address, api_key)
+                    if res_end["success"]:
+                        addon.end_snapped_coords = res_end["display_text"]
+                        addon.route_end_address_lat = res_end["lat"]
+                        addon.route_end_address_lon = res_end["lon"]
+                        print(f"[BLOSM] Auto-snapped End: {res_end['display_text']}")
+                    else:
+                        print(f"[BLOSM] Auto-snap End failed: {res_end.get('error')}")
 
             # Resolve coordinates if snapped (implied by non-empty display string)
             start_coords = None

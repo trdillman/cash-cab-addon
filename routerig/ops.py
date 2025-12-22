@@ -102,6 +102,22 @@ class ROUTERIG_OT_export_scene_summary(bpy.types.Operator):
         return {"FINISHED"}
 
 
+def _check_deps(op, start_obj, end_obj, route_obj, car_obj) -> bool:
+    missing = []
+    if not start_obj: missing.append(CANON_START)
+    if not end_obj: missing.append(CANON_END)
+    if not car_obj: missing.append(CANON_CAR)
+    # route_obj is optional for spawn, required for anim?
+    # Logic in original ops: 
+    # spawn_test_camera checks (start, end, car)
+    # generate_camera_animation checks (start, end, route, car)
+    
+    if missing:
+        op.report({"WARNING"}, f"Cannot run RouteRig: Missing {', '.join(missing)}")
+        return False
+    return True
+
+
 class ROUTERIG_OT_spawn_test_camera(bpy.types.Operator):
     bl_idname = "routerig.spawn_test_camera"
     bl_label = "Spawn Test Camera"
@@ -112,8 +128,10 @@ class ROUTERIG_OT_spawn_test_camera(bpy.types.Operator):
         start_obj = find_object(CANON_START)
         end_obj = find_object(CANON_END)
         car_obj = find_object(CANON_CAR)
+        
+        # Check dependencies gracefully
         if not (start_obj and end_obj and car_obj):
-            bpy.ops.routerig.validate_scene()
+            self.report({"WARNING"}, f"Cannot spawn camera: Missing {CANON_START}, {CANON_END}, or {CANON_CAR}")
             return {"CANCELLED"}
 
         profile = load_default_profile()
@@ -157,8 +175,10 @@ class ROUTERIG_OT_generate_camera_animation(bpy.types.Operator):
         end_obj = find_object(CANON_END)
         route_obj = find_object_any(CANON_ROUTE_ALIASES)
         car_obj = find_object(CANON_CAR)
+        
+        # Check dependencies gracefully
         if not (start_obj and end_obj and route_obj and car_obj):
-            bpy.ops.routerig.validate_scene()
+            self.report({"WARNING"}, f"Cannot animate camera: Missing {CANON_START}, {CANON_END}, {CANON_ROUTE}, or {CANON_CAR}")
             return {"CANCELLED"}
 
         profile = load_default_profile()

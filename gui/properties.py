@@ -302,13 +302,17 @@ class BlosmProperties(bpy.types.PropertyGroup):
         update=_on_end_address_update,
     )
 
-    route_snap_to_road_centerline: bpy.props.BoolProperty(
-        name="Snap to road centerlines",
-        description=(
-            "After geocoding, snap the start/end points to the nearest OSM road "
-            "centerline using Overpass. Disable to use raw geocoder coordinates."
-        ),
-        default=False,
+    route_end_address_lon: bpy.props.FloatProperty(
+        name="End Longitude",
+        description="Longitude of end address (auto-populated)",
+        default=0.0,
+    )
+
+    # Route waypoints collection
+    route_waypoints: bpy.props.CollectionProperty(
+        type=BlosmRouteWaypoint,
+        name="Route Waypoints",
+        description="Intermediate stops between start and end",
     )
 
     # Route geocoded coordinates (stored by geocoding service)
@@ -324,30 +328,12 @@ class BlosmProperties(bpy.types.PropertyGroup):
         default=0.0,
     )
 
-    route_end_address_lat: bpy.props.FloatProperty(
-        name="End Latitude",
-        description="Latitude of end address (auto-populated)",
-        default=0.0,
-    )
-
-    route_end_address_lon: bpy.props.FloatProperty(
-        name="End Longitude",
-        description="Longitude of end address (auto-populated)",
-        default=0.0,
-    )
-
-    # Route waypoints collection
-    route_waypoints: bpy.props.CollectionProperty(
-        type=BlosmRouteWaypoint,
-        name="Route Waypoints",
-        description="Intermediate stops between start and end",
-    )
 
     route_padding_m: bpy.props.FloatProperty(
         name="Padding (m)",
         description="Padding in meters to expand the route bounding box",
         min=0.0,
-        default=100.0,
+        default=2000.0,
     )
 
   
@@ -443,6 +429,12 @@ class BlosmProperties(bpy.types.PropertyGroup):
         default=False,
     )
 
+    ui_show_route_camera: bpy.props.BoolProperty(
+        name="Show Route Camera",
+        description="Toggle visibility of route camera section in the CashCab panel",
+        default=False,
+    )
+
     ui_show_extend_city: bpy.props.BoolProperty(
         name="Show Extend City Controls",
         description="Toggle visibility of the Extend City controls in the CashCab panel",
@@ -453,6 +445,12 @@ class BlosmProperties(bpy.types.PropertyGroup):
         name="Show Extra Features",
         description="Toggle visibility of extra convenience features in the CashCab panel",
         default=False,
+    )
+
+    auto_snap_addresses: bpy.props.BoolProperty(
+        name="Auto Snap Addresses",
+        description="Automatically snap addresses to road centerlines using Google API during import",
+        default=True,
     )
 
     route_adjuster_enabled: bpy.props.BoolProperty(

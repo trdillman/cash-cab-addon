@@ -56,7 +56,10 @@ class GoogleAPIConfig:
     """
     Google Maps Platform API configuration
     """
-    api_key_default: str = ""
+    # Optional environment variable name to source a key from (useful for local testing)
+    api_key_env_var: str = "AIzaSyB8LYSZ2_EBoi04kQQK8-2GDK-4wCNxMWU"
+    # Optional hardcoded default key (leave blank for safety; only set locally for testing)
+    api_key_default: str = "AIzaSyB8LYSZ2_EBoi04kQQK8-2GDK-4wCNxMWU"
     # Default to driving mode
     default_travel_mode: str = "driving"
     # Timeout for Google API requests
