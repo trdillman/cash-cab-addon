@@ -174,6 +174,27 @@ class BLOSM_OT_FetchRouteMap(bpy.types.Operator):
                     except Exception:
                         pass
 
+        # Snapshot layer toggles and other commonly used non-route settings that should persist
+        # across base scene append. Without this, headless/batch runs can silently revert to
+        # base.blend defaults (e.g. buildings/water toggles), causing unexpected imports.
+        non_route_keys = [
+            "buildings",
+            "water",
+            "forests",
+            "vegetation",
+            "highways",
+            "railways",
+            "coordinatesAsFilter",
+        ]
+        non_route_props = {}
+        if addon_props is not None:
+            for key in non_route_keys:
+                if hasattr(addon_props, key):
+                    try:
+                        non_route_props[key] = getattr(addon_props, key)
+                    except Exception:
+                        pass
+
         # Snapshot scene-level animation properties to preserve user settings/defaults
         # This fixes the issue where base.blend overrides defaults (e.g. 15 -> 30)
         anim_props = {}
@@ -220,6 +241,12 @@ class BLOSM_OT_FetchRouteMap(bpy.types.Operator):
         new_addon = getattr(new_scene, "blosm", None)
         if new_addon is not None and route_props:
             for key, value in route_props.items():
+                try:
+                    setattr(new_addon, key, value)
+                except Exception:
+                    pass
+        if new_addon is not None and non_route_props:
+            for key, value in non_route_props.items():
                 try:
                     setattr(new_addon, key, value)
                 except Exception:
@@ -394,6 +421,16 @@ class BLOSM_OT_FetchRouteMap(bpy.types.Operator):
             route_pipeline_finalizer.run(context.scene)
         except Exception as final_exc:
             print(f"[BLOSM] WARN finalizer: {final_exc}")
+
+        # Auto-generate RouteRig Camera
+        addon_props = getattr(context.scene, "blosm", None)
+        if addon_props and getattr(addon_props, "route_generate_camera", False):
+            try:
+                print("[BLOSM] Auto-generating RouteRig camera...")
+                bpy.ops.routerig.spawn_test_camera()
+                bpy.ops.routerig.generate_camera_animation()
+            except Exception as cam_exc:
+                print(f"[BLOSM] WARN RouteRig camera generation failed: {cam_exc}")
 
         # ENHANCED: Verify road asset registration after processing
         try:
@@ -856,13 +893,6 @@ class BLOSM_OT_FetchRouteMap(bpy.types.Operator):
             route_nodes.ensure_route_nodes(context)
         except Exception as nodes_exc:
             self._log(f"Route nodes setup failed: {nodes_exc}")
-
-        # Optional RouteCam integration: auto-create cinematic camera
-        try:
-            from .. import routecam_integration
-            routecam_integration.maybe_run_routecam(context, route_obj)
-        except Exception as rc_exc:
-            self._log(f"RouteCam integration failed: {rc_exc}")
 
         # DISABLED: Legacy preview animation logic causes duplicate cars.
         # The new pipeline_finalizer logic handles animation drivers and constraints.

@@ -21,7 +21,6 @@ addon_files = [
     "renderer/",
     "road/",
     "route/",
-    "routecam/",
     "setup/",
     "terrain/",
     "util/",

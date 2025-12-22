@@ -1,0 +1,327 @@
+{
+  "version": 2,
+  "source": "Learned from 6 approved shots + template timing",
+  "timeline": {
+    "keyframes": [
+      1,
+      47,
+      79,
+      120,
+      160
+    ],
+    "frame_active_end": 160,
+    "frame_total": 160,
+    "buffer_mode": "hold_last"
+  },
+  "composition": {
+    "target_weights_keys": [
+      {
+        "frame": 1,
+        "start": 0.31027496855935754,
+        "car": 0.30923846019742834,
+        "end": 0.3804865712432141
+      },
+      {
+        "frame": 47,
+        "start": 0.20857829923666213,
+        "car": 0.5215145268586492,
+        "end": 0.2699071739046887
+      },
+      {
+        "frame": 79,
+        "start": 0.23469653468627208,
+        "car": 0.41468730383111846,
+        "end": 0.3506161614826095
+      },
+      {
+        "frame": 120,
+        "start": 0.019906331699039454,
+        "car": 0.25566133811341746,
+        "end": 0.7244323301875433
+      },
+      {
+        "frame": 160,
+        "start": 0.0007807884888949676,
+        "car": 0.7175646194977086,
+        "end": 0.2816545920133965
+      }
+    ],
+    "desired_screen_keys": {
+      "car": [
+        {
+          "frame": 1,
+          "nx": 0.1278593639532725,
+          "ny": -0.5446761647860209
+        },
+        {
+          "frame": 47,
+          "nx": 0.09017656743526459,
+          "ny": -0.35937146345774335
+        },
+        {
+          "frame": 79,
+          "nx": 0.0022247334321339927,
+          "ny": -0.20760868986447653
+        },
+        {
+          "frame": 120,
+          "nx": -0.017797817786534626,
+          "ny": 0.1953017512957255
+        },
+        {
+          "frame": 160,
+          "nx": -0.008311996857325235,
+          "ny": 0.05689015984535217
+        }
+      ],
+      "start": [
+        {
+          "frame": 1,
+          "nx": 0.1347767561674118,
+          "ny": -0.5424839655558268
+        },
+        {
+          "frame": 47,
+          "nx": 0.14485115309556326,
+          "ny": -0.4592943886915843
+        },
+        {
+          "frame": 79,
+          "nx": -0.5386803984642029,
+          "ny": -0.4008584305644035
+        },
+        {
+          "frame": 120,
+          "nx": 0.0,
+          "ny": 0.0
+        },
+        {
+          "frame": 160,
+          "nx": 0.0,
+          "ny": 0.0
+        }
+      ],
+      "end": [
+        {
+          "frame": 1,
+          "nx": -0.026493817567825317,
+          "ny": 0.41901222864786786
+        },
+        {
+          "frame": 47,
+          "nx": 0.3055293321609497,
+          "ny": 0.6285448789596557
+        },
+        {
+          "frame": 79,
+          "nx": 0.3808650434017181,
+          "ny": 0.2050540804862976
+        },
+        {
+          "frame": 120,
+          "nx": 0.02754811445871989,
+          "ny": -0.0659102996190389
+        },
+        {
+          "frame": 160,
+          "nx": -0.0034228861331939697,
+          "ny": 0.1567338208357493
+        }
+      ]
+    },
+    "route_dir_keys": [
+      {
+        "frame": 1,
+        "angle_deg": 114.82581661643543
+      },
+      {
+        "frame": 47,
+        "angle_deg": 88.72024457044108
+      },
+      {
+        "frame": 79,
+        "angle_deg": 20.17107273798044
+      },
+      {
+        "frame": 120,
+        "angle_deg": -62.660130329741605
+      },
+      {
+        "frame": 160,
+        "angle_deg": 90.54616338453754
+      }
+    ],
+    "margins": {
+      "hard_clip": 0.98,
+      "soft_clip": 0.9
+    }
+  },
+  "camera": {
+    "distance_keys": [
+      {
+        "frame": 1,
+        "distance": 3531.3992700541294
+      },
+      {
+        "frame": 47,
+        "distance": 2849.0319209499485
+      },
+      {
+        "frame": 79,
+        "distance": 2264.6406754274994
+      },
+      {
+        "frame": 120,
+        "distance": 1978.247267006472
+      },
+      {
+        "frame": 160,
+        "distance": 1943.5055107377545
+      }
+    ]
+  },
+  "angle": {
+    "roll_mode": "lock_world_up",
+    "pitch_keys_deg": [
+      {
+        "frame": 1,
+        "pitch": -20.242655346573304
+      },
+      {
+        "frame": 47,
+        "pitch": -26.99875529726115
+      },
+      {
+        "frame": 79,
+        "pitch": -35.79568287049625
+      },
+      {
+        "frame": 120,
+        "pitch": -40.59674708054603
+      },
+      {
+        "frame": 160,
+        "pitch": -42.05949020870224
+      }
+    ],
+    "yaw_model": {
+      "mode": "solve_screen",
+      "base_keys": [
+        {
+          "frame": 1,
+          "base": "start_to_end"
+        },
+        {
+          "frame": 47,
+          "base": "car_to_end"
+        },
+        {
+          "frame": 79,
+          "base": "car_to_end"
+        },
+        {
+          "frame": 120,
+          "base": "end_to_start"
+        },
+        {
+          "frame": 160,
+          "base": "car_to_start"
+        }
+      ],
+      "offset_keys": [
+        {
+          "frame": 1,
+          "offset": -8.10783854281424
+        },
+        {
+          "frame": 47,
+          "offset": 2.759874880996179
+        },
+        {
+          "frame": 79,
+          "offset": 48.20316856335339
+        },
+        {
+          "frame": 120,
+          "offset": -47.512199221631334
+        },
+        {
+          "frame": 160,
+          "offset": -46.46824795776888
+        }
+      ],
+      "heading_weight_keys": [
+        {
+          "frame": 1,
+          "w_heading": 0.0
+        }
+      ],
+      "smoothing_frames": 0
+    }
+  },
+  "ortho": {
+    "fit_mode": "include_anchors_with_margin",
+    "fit_anchors_keys": [
+      {
+        "frame": 1,
+        "start": true,
+        "car": true,
+        "end": true
+      },
+      {
+        "frame": 47,
+        "start": true,
+        "car": true,
+        "end": true
+      },
+      {
+        "frame": 79,
+        "start": true,
+        "car": true,
+        "end": true
+      },
+      {
+        "frame": 120,
+        "start": false,
+        "car": true,
+        "end": true
+      },
+      {
+        "frame": 160,
+        "start": false,
+        "car": true,
+        "end": true
+      }
+    ],
+    "route_window_keys": [
+      {
+        "frame": 1,
+        "u0": 0.0,
+        "u1": 1.0
+      },
+      {
+        "frame": 47,
+        "u0": 0.0,
+        "u1": 1.0
+      },
+      {
+        "frame": 79,
+        "u0": 0.0,
+        "u1": 1.0
+      },
+      {
+        "frame": 120,
+        "u0": 0.4,
+        "u1": 1.0
+      },
+      {
+        "frame": 160,
+        "u0": 0.8,
+        "u1": 1.0
+      }
+    ]
+  },
+  "collision": {
+    "buildings_collection_name": "ASSET_BUILDINGS"
+  }
+}

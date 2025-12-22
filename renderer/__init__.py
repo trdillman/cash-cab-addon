@@ -106,14 +106,64 @@ class Renderer:
         """
         join = self.toJoin
         if join:
+            # Bulk route imports have seen Blender 4.5 depsgraph crashes during
+            # selection/join updates (EXCEPTION_ACCESS_VIOLATION in rna_ViewLayer_update_tagged).
+            # Prefer stability in automated runs; the bulk importer can opt-in via scene custom prop.
+            scene = getattr(bpy.context, "scene", None)
+            try:
+                bulk_disable_join = bool(scene and scene.get("cashcab_bulk_disable_join", False))
+            except Exception:
+                bulk_disable_join = False
+
+            if bpy.app.background or bulk_disable_join:
+                join.clear()
+                return
+            view_layer = getattr(bpy.context, "view_layer", None)
             for target in join:
+                target_obj = bpy.data.objects.get(target)
+                if target_obj is None or view_layer is None or getattr(view_layer, "objects", None) is None:
+                    continue
+
+                # Headless imports can have some objects excluded from the active ViewLayer (e.g. by design
+                # via collection excludes). Selecting excluded objects prints errors and can abort the join.
+                # Be conservative: only join objects that are actually selectable in this ViewLayer.
+                try:
+                    if view_layer.objects.get(target_obj.name) is None:
+                        continue
+                except Exception:
+                    continue
+
+                try:
+                    bpy.ops.object.select_all(action="DESELECT")
+                except Exception:
+                    pass
+
+                selectable = []
                 for o in join[target]:
-                    o.select_set(True)
-                target = bpy.data.objects[target]
-                target.select_set(True)
-                bpy.context.view_layer.objects.active = target
-                bpy.ops.object.join()
-                target.select_set(False)
+                    try:
+                        if o and view_layer.objects.get(o.name) is not None:
+                            selectable.append(o)
+                    except Exception:
+                        continue
+
+                for o in selectable:
+                    try:
+                        o.select_set(True)
+                    except Exception:
+                        pass
+                try:
+                    target_obj.select_set(True)
+                    bpy.context.view_layer.objects.active = target_obj
+                except Exception:
+                    pass
+
+                if selectable:
+                    bpy.ops.object.join()
+
+                try:
+                    target_obj.select_set(False)
+                except Exception:
+                    pass
         join.clear()
     
     @classmethod

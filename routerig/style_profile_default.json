@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "source": "Derived from 10 approved shots (sampled every 5 frames); intended as a starting profile.",
+  "timeline": {
+    "frame_active_end": 160,
+    "frame_total": 180,
+    "buffer_mode": "hold_last"
+  },
+  "composition": {
+    "target_weights_keys": [
+      {"frame": 1, "start": 0.0, "car": 0.5, "end": 0.5},
+      {"frame": 40, "start": 0.0, "car": 0.5, "end": 0.5},
+      {"frame": 120, "start": 0.0, "car": 0.8, "end": 0.2},
+      {"frame": 160, "start": 0.0, "car": 0.2, "end": 0.8}
+    ],
+    "desired_screen_keys": {
+      "car": [
+        {"frame": 1, "nx": -0.05, "ny": -0.60},
+        {"frame": 40, "nx": -0.05, "ny": -0.60},
+        {"frame": 120, "nx": -0.10, "ny": -0.30},
+        {"frame": 160, "nx": -0.10, "ny": -0.20}
+      ],
+      "start": [
+        {"frame": 1, "nx": -0.05, "ny": -0.65},
+        {"frame": 40, "nx": -0.05, "ny": -0.65},
+        {"frame": 120, "nx": -0.15, "ny": -0.65},
+        {"frame": 160, "nx": -1.20, "ny": -2.20}
+      ],
+      "end": [
+        {"frame": 1, "nx": 0.00, "ny": 0.45},
+        {"frame": 40, "nx": 0.00, "ny": 0.45},
+        {"frame": 120, "nx": 0.00, "ny": 0.60},
+        {"frame": 160, "nx": 0.00, "ny": 0.05}
+      ]
+    },
+    "margins": {
+      "hard_clip": 0.98,
+      "soft_clip": 0.90
+    }
+  },
+  "angle": {
+    "roll_mode": "lock_world_up",
+    "roll_clamp_deg": [-15.0, 15.0],
+    "pitch_keys_deg": [
+      {"frame": 1, "pitch": -19.0},
+      {"frame": 40, "pitch": -19.0},
+      {"frame": 120, "pitch": -34.0},
+      {"frame": 160, "pitch": -39.0}
+    ],
+    "pitch_clamp_deg": [-50.0, -6.0],
+    "yaw_model": {
+      "description": "Blend of car heading and anchor vectors; allow large swings; smooth strongly.",
+      "heading_weight_keys": [
+        {"frame": 1, "w_heading": 0.2},
+        {"frame": 40, "w_heading": 0.4},
+        {"frame": 120, "w_heading": 0.8},
+        {"frame": 160, "w_heading": 0.2}
+      ],
+      "smoothing_frames": 12
+    }
+  },
+  "ortho": {
+    "fit_mode": "include_anchors_with_margin",
+    "scale_smoothing_frames": 8,
+    "scale_expand_on_collision": 1.05
+  },
+  "collision": {
+    "buildings_collection_name": "ASSET_BUILDINGS",
+    "camera_clearance_radius": 2.0,
+    "max_push_iterations": 30,
+    "push_step": 1.0,
+    "push_order": ["+Z", "-V", "+RIGHT", "-RIGHT", "+UP", "-UP"]
+  }
+}

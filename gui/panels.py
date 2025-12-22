@@ -98,6 +98,7 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
         # 2. Main Toggles & Imports
         layout.separator()
         layout.prop(addon, "route_create_preview_animation", text="Create Animated Route & Assets")
+        layout.prop(addon, "route_generate_camera", text="Auto-generate Camera")
 
 
         # 3. Animation Controls (Collapsible)
@@ -125,6 +126,15 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
             trail_col.prop(context.scene, "blosm_car_trail_start_adjust", text="Start Adjust")
             trail_col.prop(context.scene, "blosm_car_trail_end_adjust", text="End Adjust")
             trail_col.prop(context.scene, "blosm_car_trail_tail_shift", text="Tail Shift")
+
+
+        # 3.5 Camera Controls
+        camera_box = layout.box()
+        camera_box.label(text="Route Camera", icon='CAMERA_DATA')
+        
+        row = camera_box.row(align=True)
+        row.operator("routerig.spawn_test_camera", text="Spawn Camera", icon='CAMERA_DATA')
+        row.operator("routerig.generate_camera_animation", text="Animate Camera", icon='ANIM')
 
 
         # 4. Extend City (Collapsible)

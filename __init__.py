@@ -30,21 +30,13 @@ except Exception:
 
 _classes = tuple()
 
-routecam_unified = None
-
 if _IN_BLENDER:
     from . import gui
+    from . import routerig
     from .route.fetch_operator import BLOSM_OT_FetchRouteMap, BLOSM_OT_ExtendCityArea
     from .osm.import_operator import BLOSM_OT_ImportData
     from .app import blender as blenderApp
     from .setup import render_settings # Import render settings module
-
-    # RouteCam Integration (Unified Package)
-    try:
-        from . import routecam
-    except Exception as _rc_exc:
-        routecam = None
-        print(f"[CashCab] RouteCam package not available: {_rc_exc}")
 
     # Register route operators from route module
     from .route import assets as route_assets
@@ -84,16 +76,7 @@ def register():
     # Register route asset operators
     route_assets.register()
     route_nodes.register()
-
-    # Register RouteCam (Unified Package)
-    if routecam is not None:
-        try:
-            routecam.register()
-            print("[CashCab] RouteCam registered")
-        except Exception as rc_exc:
-            print(f"[CashCab] RouteCam registration failed: {rc_exc}")
-
-
+    routerig.register()
 
     # Register GUI (panels, properties, operators)
     gui.register()
@@ -258,14 +241,10 @@ def unregister():
     except Exception:
         pass
 
-    # Unregister RouteCam
-    if routecam is not None:
-        try:
-            routecam.unregister()
-        except Exception as rc_exc:
-            print(f"[CashCab] RouteCam unregister failed: {rc_exc}")
-
-
+    try:
+        routerig.unregister()
+    except Exception:
+        pass
 
     # Unregister route operators
     try:

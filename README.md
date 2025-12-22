@@ -27,7 +27,6 @@ CashCab Route Import is a comprehensive Blender addon that fetches real-world ro
 ### 🎥 Animation System
 - **Route animation** - Automatic keyframe generation for car movement along routes
 - **Route trace animation** - Geometry Nodes-driven route reveal effect
-- **RouteCam integration** - Unified camera system for dynamic camera paths
 - **Configurable timing** - Adjustable start/end frames and lead frames
 
 ### 🎨 Scene Assets
@@ -119,7 +118,6 @@ cash-cab-addon/
 │   ├── anim.py              # Animation keyframe management
 │   ├── assets.py            # Route asset operators
 │   └── nodes.py             # Geometry Nodes setup
-├── routecam/                # Camera path system
 ├── setup/                   # Scene setup and render settings
 ├── terrain/                 # Terrain generation
 └── util/                    # Utility functions

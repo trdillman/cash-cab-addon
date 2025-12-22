@@ -359,26 +359,15 @@ class BlosmProperties(bpy.types.PropertyGroup):
         soft_max=5000.0,
     )
 
-  
-    routecam_batch_v2_count: bpy.props.IntProperty(
-        name="V2 Cameras",
-        description="Number of random V2 (Robust Director) cameras to generate",
-        default=2,
-        min=0,
-        max=10
-    )
-
-    routecam_batch_viz_count: bpy.props.IntProperty(
-        name="Viz Cameras",
-        description="Number of random Viz (Keyframe Viz) cameras to generate",
-        default=2,
-        min=0,
-        max=10
-    )
-
     route_create_preview_animation: bpy.props.BoolProperty(
         name="Create Animated Route & Assets",
         description="Generate a 250 frame animated preview along the imported route",
+        default=True,
+    )
+
+    route_generate_camera: bpy.props.BoolProperty(
+        name="Auto-generate Camera",
+        description="Automatically spawn and animate a camera rig after route import",
         default=True,
     )
 

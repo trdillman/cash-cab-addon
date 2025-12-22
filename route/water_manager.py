@@ -8,6 +8,7 @@ import bpy
 import bmesh
 import os
 import sys
+import tempfile
 import xml.etree.ElementTree as ET
 import math # Added for math.radians
 from mathutils import Vector
@@ -471,10 +472,38 @@ def get_raw_content_bounds():
 
 def fetch_raw_water_data(minLat, minLon, maxLat, maxLon):
     print(f"[BLOSM] Fetching Raw Water Data for {minLat},{minLon} to {maxLat},{maxLon}")
-    osm_file = os.path.join(bpy.app.tempdir, "water_import_raw.osm")
+
+    # IMPORTANT: bpy.app.tempdir can resolve to protected locations (e.g. C:\\WINDOWS\\TEMP)
+    # in headless sessions. Use Python's temp dir (user-writable) with fallbacks.
+    try:
+        tmp_dir = Path(tempfile.gettempdir())
+    except Exception:
+        tmp_dir = None
+
+    osm_file = None
+    # Prefer a unique temp file to avoid clashes between concurrent headless runs.
+    try:
+        fd, tmp_name = tempfile.mkstemp(prefix="cashcab_water_import_raw_", suffix=".osm", dir=str(tmp_dir) if tmp_dir else None)
+        try:
+            os.close(fd)
+        except Exception:
+            pass
+        osm_file = tmp_name
+    except Exception:
+        # Fall back to the current working directory (typically user-writable) as a last resort.
+        try:
+            cand = Path.cwd() / "cashcab_water_import_raw.osm"
+            cand.write_bytes(b"")
+            osm_file = str(cand)
+        except Exception:
+            osm_file = None
+
+    if not osm_file:
+        print("[BLOSM] Water Download failed: no writable temp directory available")
+        return None
     
     query = f"""
-    [out:xml][timeout:25];
+    [out:xml][timeout:180];
     (
       way["natural"="water"]({minLat},{minLon},{maxLat},{maxLon});
       relation["natural"="water"]({minLat},{minLon},{maxLat},{maxLon});
@@ -491,13 +520,35 @@ def fetch_raw_water_data(minLat, minLon, maxLat, maxLon):
     import urllib.request
     import urllib.parse
     
-    url = "https://overpass-api.de/api/interpreter"
+    # Overpass can intermittently fail (e.g. 504 Gateway Timeout). Try multiple endpoints.
+    urls = [
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+        "https://overpass.nchc.org.tw/api/interpreter",
+    ]
     data = urllib.parse.urlencode({'data': query}).encode('utf-8')
     try:
-        req = urllib.request.Request(url, data=data)
-        with urllib.request.urlopen(req) as response:
-            with open(osm_file, 'wb') as f: f.write(response.read())
-        return osm_file
+        last_exc = None
+        for url in urls:
+            try:
+                req = urllib.request.Request(
+                    url,
+                    data=data,
+                    headers={
+                        "User-Agent": "CashCab/Blender (water_manager)",
+                        "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
+                    },
+                )
+                with urllib.request.urlopen(req, timeout=120) as response:
+                    with open(osm_file, 'wb') as f:
+                        f.write(response.read())
+                print(f"[BLOSM] Water Download OK via {url}")
+                return osm_file
+            except Exception as exc:
+                last_exc = exc
+                print(f"[BLOSM] Water Download failed via {url}: {exc}")
+        if last_exc:
+            raise last_exc
     except Exception as e:
         print(f"[BLOSM] Water Download failed: {e}")
         return None
@@ -596,6 +647,22 @@ def process(context, bounds=None):
         stitched_inner = stitch_ways(inner_segments)
     else:
         print("[BLOSM] Water Download failed: falling back to default water plane geometry.")
+
+    # If we couldn't stitch any water boundary loops (e.g. download failed), we still must
+    # create a sane default "lake" cutter so the required result planes exist.
+    if not stitched_outer:
+        try:
+            stitched_outer = [
+                [
+                    get_projected_co(minLat, minLon, projection),
+                    get_projected_co(minLat, maxLon, projection),
+                    get_projected_co(maxLat, maxLon, projection),
+                    get_projected_co(maxLat, minLon, projection),
+                ]
+            ]
+            print("[BLOSM] Using fallback rectangular lake loop (no stitched water boundary found).")
+        except Exception as exc:
+            print(f"[BLOSM] WARN: fallback lake loop creation failed: {exc}")
     
     print(f"[BLOSM] Found {len(stitched_outer)} Lake Loops and {len(stitched_inner)} Island Loops.")
     

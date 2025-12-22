@@ -796,13 +796,6 @@ class BLOSM_OT_FetchRouteMap(bpy.types.Operator):
         except Exception as nodes_exc:
             self._log(f"Route nodes setup failed: {nodes_exc}")
 
-        # Optional RouteCam integration: auto-create cinematic camera
-        try:
-            from .. import routecam_integration
-            routecam_integration.maybe_run_routecam(context, route_obj)
-        except Exception as rc_exc:
-            self._log(f"RouteCam integration failed: {rc_exc}")
-
         # DISABLED: Legacy preview animation logic causes duplicate cars.
         # The new pipeline_finalizer logic handles animation drivers and constraints.
         # if getattr(context.scene.blosm, 'route_create_preview_animation', False):
