@@ -157,7 +157,7 @@ class ROUTERIG_OT_spawn_test_camera(bpy.types.Operator):
         # Keyframe the initial pose so it behaves like a “starting cam rig”.
         context.scene.frame_set(1)
         cam_obj.keyframe_insert(data_path="location", frame=1)
-        cam_obj.keyframe_insert(data_path="rotation_quaternion", frame=1)
+        cam_obj.keyframe_insert(data_path="rotation_euler", frame=1)
         cam_obj.data.keyframe_insert(data_path="ortho_scale", frame=1)
 
         self.report({"INFO"}, f"Spawned {cam_obj.name} at frame 1")
@@ -183,7 +183,14 @@ class ROUTERIG_OT_generate_camera_animation(bpy.types.Operator):
 
         profile = load_default_profile()
 
-        keyframes = profile.get("timeline", {}).get("keyframes", []) or [1, 47, 79, 120, 160]
+        from . import camera_anim
+        active_end = camera_anim._resolve_camera_active_end(scene=context.scene, profile=profile)
+        keyframes = camera_anim._effective_keyframes(
+            scene=context.scene,
+            profile=profile,
+            keyframes_override=None,
+            active_end=active_end,
+        )
 
         cam_obj = generate_camera_animation(
             scene=context.scene,

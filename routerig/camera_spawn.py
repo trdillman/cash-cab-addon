@@ -11,6 +11,22 @@ from .finders import find_collection
 CANON_BUILDINGS = "ASSET_BUILDINGS"
 
 
+def _euler_from_quat_continuous(prev_euler, quat):
+    """Convert quaternion to Euler and unwrap to avoid 180/360 jumps."""
+    e = quat.to_euler("XYZ")
+    if prev_euler is None:
+        return e
+    for i in range(3):
+        a = float(e[i])
+        b = float(prev_euler[i])
+        while a - b > math.pi:
+            a -= 2.0 * math.pi
+        while a - b < -math.pi:
+            a += 2.0 * math.pi
+        e[i] = a
+    return e
+
+
 def _deg(rad: float) -> float:
     return rad * 180.0 / math.pi
 
@@ -190,8 +206,8 @@ def spawn_start_camera_from_features(
     cam_obj.location = cam_loc
 
     # For now: always lock orientation from the computed forward/up (no user roll control).
-    cam_obj.rotation_mode = "QUATERNION"
-    cam_obj.rotation_quaternion = rot.to_quaternion()
+    cam_obj.rotation_mode = "XYZ"
+    cam_obj.rotation_euler = _euler_from_quat_continuous(None, rot.to_quaternion())
 
     cam_obj.data.type = "ORTHO"
 

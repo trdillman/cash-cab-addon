@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import bmesh
 import bpy
-from mathutils import Matrix, Quaternion, Vector
+from mathutils import Euler, Matrix, Quaternion, Vector
 from mathutils.bvhtree import BVHTree
 
 from . import log
@@ -44,6 +44,40 @@ def _ensure_quat_continuity(prev: Quaternion | None, curr: Quaternion) -> Quater
     if prev.dot(curr) < 0.0:
         return -curr
     return curr
+
+
+def _ensure_euler_continuity(prev: Euler | None, curr: Euler) -> Euler:
+    """Unwrap Euler angles to avoid 180/360 jumps between successive keys."""
+    if prev is None:
+        return curr
+    out = curr.copy()
+    for i in range(3):
+        a = float(out[i])
+        b = float(prev[i])
+        while a - b > math.pi:
+            a -= 2.0 * math.pi
+        while a - b < -math.pi:
+            a += 2.0 * math.pi
+        out[i] = a
+    return out
+
+
+def _clear_routerig_camera_animation(cam_obj: bpy.types.Object) -> None:
+    """Remove prior RouteRig fcurves so reruns don't leave quaternion curves behind."""
+    actions: list[bpy.types.Action] = []
+    if cam_obj.animation_data and cam_obj.animation_data.action:
+        actions.append(cam_obj.animation_data.action)
+    if cam_obj.data and cam_obj.data.animation_data and cam_obj.data.animation_data.action:
+        actions.append(cam_obj.data.animation_data.action)
+
+    for action in actions:
+        for fc in list(action.fcurves):
+            dp = str(getattr(fc, "data_path", "") or "")
+            if dp in ("location", "rotation_quaternion", "rotation_euler") or dp.endswith("ortho_scale"):
+                try:
+                    action.fcurves.remove(fc)
+                except Exception:
+                    pass
 
 
 def _heading_yaw_deg(car_pos: Vector, car_pos2: Vector) -> float:
@@ -444,6 +478,24 @@ def _apply_curve_profile_to_camera(*, cam_obj: bpy.types.Object, profile: dict) 
             _apply_generic_curve_profile_to_fcurve(fc=fc, curve_keys=curve_keys)
 
 
+def _force_linear_rotation_euler(*, cam_obj: bpy.types.Object) -> None:
+    """Prevent Euler Bezier overshoot that can manifest as apparent spins."""
+    ad = getattr(cam_obj, "animation_data", None)
+    action = getattr(ad, "action", None) if ad else None
+    if not action:
+        return
+    for fc in getattr(action, "fcurves", []) or []:
+        if str(getattr(fc, "data_path", "") or "") != "rotation_euler":
+            continue
+        for kp in getattr(fc, "keyframe_points", []) or []:
+            try:
+                kp.interpolation = "LINEAR"
+                kp.handle_left_type = "VECTOR"
+                kp.handle_right_type = "VECTOR"
+            except Exception:
+                pass
+
+
 def _enforce_hold_last(*, cam_obj: bpy.types.Object, frame_hold: int) -> None:
     actions: list[bpy.types.Action] = []
     if cam_obj.animation_data and cam_obj.animation_data.action:
@@ -653,7 +705,7 @@ def _route_window_points(*, route_pts: list[Vector], start: Vector, end: Vector,
     return out if out else route_pts
 
 
-def _filter_camera_path(states: list[CameraState], profile: dict) -> list[CameraState]:
+def _filter_camera_path(states: list[CameraState], profile: dict, keyframes: list[int] | None = None) -> list[CameraState]:
     # Determine the final active end frame from the profile.
     timeline = profile.get("timeline", {}) if isinstance(profile, dict) else {}
     frame_total = int(timeline.get("frame_total", 160))
@@ -661,9 +713,9 @@ def _filter_camera_path(states: list[CameraState], profile: dict) -> list[Camera
     filtered_states: list[CameraState] = []
     state_map = {s.frame: s for s in states}
 
-    # Iterate through the expected keyframes from the profile, not just all calculated states.
-    # This ensures we respect the *intended* keyframe schedule.
-    expected_keyframes = sorted(list(set(int(k) for k in profile.get("timeline", {}).get("keyframes", []))))
+    # Iterate through the expected keyframes (prefer explicit list passed in).
+    expected_keyframes = keyframes if keyframes else profile.get("timeline", {}).get("keyframes", [])
+    expected_keyframes = sorted(list(set(int(k) for k in expected_keyframes)))
 
     for f in expected_keyframes:
         if f > frame_total: # Remove frames beyond the new total
@@ -724,6 +776,112 @@ def _filter_camera_path(states: list[CameraState], profile: dict) -> list[Camera
     return final_smoothed_states
 
 
+def _resolve_camera_active_end(*, scene: bpy.types.Scene, profile: dict) -> int:
+    """Prefer scene animation vars over template defaults so camera timing matches car animation."""
+    try:
+        v = int(getattr(scene, "blosm_anim_end", 0) or 0)
+        if v > 0:
+            return v
+    except Exception:
+        pass
+
+    timeline = profile.get("timeline", {}) if isinstance(profile, dict) else {}
+    try:
+        v = int(timeline.get("frame_active_end", 0) or 0)
+        if v > 0:
+            return v
+    except Exception:
+        pass
+
+    try:
+        return int(scene.frame_end)
+    except Exception:
+        return 160
+
+
+def _effective_keyframes(
+    *,
+    scene: bpy.types.Scene,
+    profile: dict,
+    keyframes_override: list[int] | None,
+    active_end: int,
+) -> list[int]:
+    """
+    Choose the camera animation keys used for calculation + keyframe insertion.
+
+    Goals:
+    - Align the last key to the *actual* car animation end (blosm_anim_end).
+    - Avoid harsh/abrupt motion; fewer late keys when not needed.
+    - Remove problematic mid/late key (frame ~120) that can cause Z-corrections.
+    """
+    timeline = profile.get("timeline", {}) if isinstance(profile, dict) else {}
+    ks_in = (
+        list(keyframes_override)
+        if keyframes_override
+        else list(timeline.get("keyframes", []) or [])
+    )
+
+    if not ks_in:
+        # Derive from standard 1/47/79 ratios mapped to active_end
+        r1 = 47.0 / 150.0
+        r2 = 79.0 / 150.0
+        k1 = max(2, int(round(active_end * r1)))
+        k2 = max(k1 + 1, int(round(active_end * r2)))
+        ks_in = [1, k1, k2, active_end]
+
+    ks = [int(k) for k in ks_in if int(k) >= 1]
+    ks = [k for k in ks if k <= max(active_end, 1)]
+    if not ks:
+        ks = [1]
+    if ks[-1] != active_end:
+        ks.append(active_end)
+
+    # Drop the mid/late key that creates abrupt rotation (commonly 120).
+    if len(ks) >= 4 and 120 in ks:
+        ks = [k for k in ks if k != 120]
+        if ks[-1] != active_end:
+            ks.append(active_end)
+
+    ks = sorted(set(ks))
+    if len(ks) == 1:
+        ks.append(max(ks[0] + 1, active_end))
+    return ks
+
+
+def _apply_bezier_auto_handles(*, cam_obj: bpy.types.Object, active_end: int, buffer_mode: str) -> None:
+    """Smooth motion while reducing overshoot and preserving hold_last."""
+
+    def _tune_action(action: bpy.types.Action) -> None:
+        for fc in getattr(action, "fcurves", []) or []:
+            dp = str(getattr(fc, "data_path", "") or "")
+            if dp not in ("location", "rotation_euler") and not dp.endswith("ortho_scale"):
+                continue
+            for kp in getattr(fc, "keyframe_points", []) or []:
+                try:
+                    kp.interpolation = "BEZIER"
+                    kp.handle_left_type = "AUTO_CLAMPED"
+                    kp.handle_right_type = "AUTO_CLAMPED"
+                except Exception:
+                    pass
+            # Force constant at active_end for buffer/hold
+            if buffer_mode == "hold_last":
+                kp = _find_kp_by_frame(fc, int(active_end))
+                if kp is not None:
+                    try:
+                        kp.interpolation = "CONSTANT"
+                    except Exception:
+                        pass
+
+    ad = getattr(cam_obj, "animation_data", None)
+    if ad and getattr(ad, "action", None):
+        _tune_action(ad.action)
+
+    cam_data = getattr(cam_obj, "data", None)
+    dad = getattr(cam_data, "animation_data", None) if cam_data else None
+    if dad and getattr(dad, "action", None):
+        _tune_action(dad.action)
+
+
 def generate_camera_animation(
     *,
     scene: bpy.types.Scene,
@@ -745,14 +903,10 @@ def generate_camera_animation(
     res_y = int(scene.render.resolution_y)
 
     timeline = profile.get("timeline", {}) if isinstance(profile, dict) else {}
-    ks = keyframes or timeline.get("keyframes", []) or [1, 47, 79, 120, 131, 145]
-    ks = sorted(set(int(k) for k in ks))
-
-    active_end = int(timeline.get("frame_active_end", scene.frame_end))
-    frame_total = int(timeline.get("frame_total", scene.frame_end))
     buffer_mode = str(timeline.get("buffer_mode", ""))
-    if buffer_mode == "hold_last":
-        ks = sorted(set(ks + [active_end, frame_total]))
+    active_end = _resolve_camera_active_end(scene=scene, profile=profile)
+    frame_total = active_end  # use active_end; hold_last handled by constant interp
+    ks = _effective_keyframes(scene=scene, profile=profile, keyframes_override=keyframes, active_end=active_end)
 
     # Filter out problematic keyframe 131 from calculation if it exists in the input list
     # The _filter_camera_path function will handle interpolation for it later if it's in the profile
@@ -789,7 +943,8 @@ def generate_camera_animation(
 
     cam_obj = _ensure_camera(scene, camera_name)
     cam_obj.data.type = "ORTHO"
-    cam_obj.rotation_mode = "QUATERNION"
+    cam_obj.rotation_mode = "XYZ"
+    _clear_routerig_camera_animation(cam_obj)
 
     depsgraph = bpy.context.evaluated_depsgraph_get()
     hold_cache: dict[str, object] | None = None
@@ -1062,21 +1217,26 @@ def generate_camera_animation(
                 "focus_points_world": [p.copy() for p in focus_points] # Store copies
             }
     
-    smoothed_states = _filter_camera_path(calculated_states, profile)
+    smoothed_states = _filter_camera_path(calculated_states, profile, keyframes=ks)
 
     # --- Keyframe insertion phase ---
+    prev_euler: Euler | None = None
     for state in smoothed_states:
         scene.frame_set(state.frame)
         cam_obj.location = state.location
-        cam_obj.rotation_quaternion = state.rotation_quaternion
+        e = state.rotation_quaternion.to_euler("XYZ")
+        e = _ensure_euler_continuity(prev_euler, e)
+        prev_euler = e.copy()
+        cam_obj.rotation_euler = e
         cam_obj.data.ortho_scale = state.ortho_scale
         _set_safe_clipping(cam_obj=cam_obj, focus_points_world=state.focus_points_world)
 
         cam_obj.keyframe_insert(data_path="location", frame=state.frame)
-        cam_obj.keyframe_insert(data_path="rotation_quaternion", frame=state.frame)
+        cam_obj.keyframe_insert(data_path="rotation_euler", frame=state.frame)
         cam_obj.data.keyframe_insert(data_path="ortho_scale", frame=state.frame)
 
     _apply_curve_profile_to_camera(cam_obj=cam_obj, profile=profile)
+    _apply_bezier_auto_handles(cam_obj=cam_obj, active_end=active_end, buffer_mode=buffer_mode)
     if buffer_mode == "hold_last":
         _enforce_hold_last(cam_obj=cam_obj, frame_hold=active_end)
 
