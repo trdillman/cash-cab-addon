@@ -207,6 +207,14 @@ class BLOSM_OT_FetchRouteMap(bpy.types.Operator):
 
         import bpy as _bpy  # local alias
 
+        # If the current file already contains a scene named "CashCab", Blender
+        # will append the base scene as "CashCab.001" (or higher). Track scenes
+        # by pointer so we can reliably select the newly appended scene.
+        try:
+            existing_scene_ptrs = {s.as_pointer() for s in _bpy.data.scenes}
+        except Exception:
+            existing_scene_ptrs = set()
+
         # Append the CashCab scene (preferred) from base.blend
         new_scene_name = None
         try:
@@ -233,7 +241,23 @@ class BLOSM_OT_FetchRouteMap(bpy.types.Operator):
             print(f"[BLOSM] WARN base scene append failed: {exc}")
             return context
 
-        new_scene = _bpy.data.scenes.get(new_scene_name) if new_scene_name else None
+        appended_scene = None
+        if existing_scene_ptrs and new_scene_name:
+            try:
+                appended = [
+                    s for s in _bpy.data.scenes
+                    if s.as_pointer() not in existing_scene_ptrs
+                ]
+                # Prefer exact match, then typical Blender collision suffix.
+                appended_scene = (
+                    next((s for s in appended if s.name == new_scene_name), None)
+                    or next((s for s in appended if s.name.startswith(f"{new_scene_name}.")), None)
+                    or (appended[0] if appended else None)
+                )
+            except Exception:
+                appended_scene = None
+
+        new_scene = appended_scene or (_bpy.data.scenes.get(new_scene_name) if new_scene_name else None)
         if new_scene is None:
             return context
 

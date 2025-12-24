@@ -1,0 +1,643 @@
+# CashCab Addon - Agent-Executable Refactoring Specification
+
+## Objective
+
+Transform the high-level refactoring workflow into **detailed, agent-executable prompts** with:
+- 11 specialized agent prompts (Phases 2-4: Performance, Quality, Testing/Docs)
+- Zero-context dependency (fresh agents can pick up any step)
+- State-based handoff mechanism (JSON checkpoint files)
+- Dual progress tracking (Markdown + JSON)
+- Specific testing procedures per agent
+- Minimal context approach (file paths + success criteria only)
+
+**Scope**: Skip security (Phase 1), keep performance optimization (Phase 2) + code quality refactoring (Phase 3) + testing/documentation (Phase 4). **Timeline**: 20 weeks (compressed from 22 weeks).
+
+---
+
+## Live To-Do Checklist
+
+### Phase 2: Performance Optimization (Weeks 1-4)
+
+- [ ] **[002] XML Streaming Parser** (`prompts/002_xml_parsing_agent.md`)
+  - Replace ElementTree with `iterparse()` streaming parser
+  - Target: 40-60% memory and import time reduction
+  - Output: `progress/phase-2-agent-002-checkpoint.json`
+
+- [ ] **[003] Asset Connection Pooling** (`prompts/003_asset_loading_agent.md`)
+  - Implement `AssetConnectionPool` for .blend asset loading
+  - Target: 30-50% performance improvement
+  - Output: `progress/phase-2-agent-003-checkpoint.json`
+
+- [ ] **[004] Memory Management** (`prompts/004_memory_management_agent.md`)
+  - Fix memory leaks, add BMesh cleanup, enhance garbage collection
+  - Target: Reduce memory growth from 1-2GB to <500MB
+  - Dependencies: Must read Agent 002 checkpoint first
+  - Output: `progress/phase-2-agent-004-checkpoint.json`
+
+- [ ] **[005] Coordinate Caching** (`prompts/005_coordinate_caching_agent.md`)
+  - Implement LRU cache for coordinate transformations
+  - Target: 10-15% performance gain
+  - Dependencies: Must read Agents 002-004 checkpoints first
+  - Output: `progress/phase-2-agent-005-checkpoint.json`
+
+**Phase 2 Gate**: All 4 agents complete, performance score 62→80/100
+
+---
+
+### Phase 3: Code Quality Refactoring (Weeks 5-14)
+
+- [ ] **[006] God Object Refactor** (`prompts/006_god_object_refactor_agent.md`)
+  - Split `route/fetch_operator.py` (1,756 lines) into 4 focused services
+  - Target: <500 lines per module, 3-5 responsibilities per class
+  - Output: `progress/phase-3-agent-006-checkpoint.json`
+
+- [ ] **[007] Type Hints** (`prompts/007_type_hints_agent.md`)
+  - Add type hints to building/, osm/, bulk/ modules
+  - Target: 80% type hint coverage
+  - Output: `progress/phase-3-agent-007-checkpoint.json`
+
+- [ ] **[008] Error Handling** (`prompts/008_error_handling_agent.md`)
+  - Replace all `print()` with logging, standardize exceptions
+  - Target: Zero `print()` statements (except tests)
+  - Output: `progress/phase-3-agent-008-checkpoint.json`
+
+- [ ] **[009] Code Deduplication** (`prompts/009_code_deduplication_agent.md`)
+  - Remove duplicate property registration, extract shared utilities
+  - Target: Reduce code duplication from 15% to <5%
+  - Dependencies: MUST wait for Agents 006-008 (avoid merge conflicts)
+  - Output: `progress/phase-3-agent-009-checkpoint.json`
+
+**Phase 3 Gate**: All 4 agents complete, code quality score 58→75-80/100
+
+---
+
+### Phase 4: Testing & Documentation (Weeks 15-20)
+
+- [ ] **[010] Security Tests** (`prompts/010_security_tests_agent.md`)
+  - Create 5 security test files (API keys, input validation, code execution, command injection, XXE)
+  - Target: 30% security test coverage
+  - Parallel: Can run with Agent 011
+  - Output: `progress/phase-4-agent-010-checkpoint.json`
+
+- [ ] **[011] Route Services Tests** (`prompts/011_route_services_tests_agent.md`)
+  - Create unit tests with mocked external APIs
+  - Target: 60% route/services/ coverage
+  - Dependencies: MUST wait for Agent 006
+  - Parallel: Can run with Agent 010
+  - Output: `progress/phase-4-agent-011-checkpoint.json`
+
+- [ ] **[012] Documentation** (`prompts/012_documentation_agent.md`)
+  - Create API reference, developer guide, user guide
+  - Target: 75% documentation coverage
+  - Dependencies: MUST wait for Agents 010-011 (stable codebase)
+  - Output: `progress/phase-4-agent-012-checkpoint.json`
+
+**Phase 4 Gate**: All 3 agents complete, test coverage 9.1%→40%, documentation 48%→75%
+
+---
+
+## Agent Dependency Graph
+
+```
+Phase 2 (Performance) - Parallel groups:
+├─ [002] XML Parsing ──────┐
+├─ [003] Asset Loading ────┤
+├─ [004] Memory Management ─┴──> [PHASE 2 GATE] ──┐
+└─ [005] Coordinate Caching*                            │
+                                                        │
+Phase 3 (Quality) - Parallel groups:                        │
+├─ [006] God Object Refactor ────┐                      │
+├─ [007] Type Hints ─────────────┤                      │
+├─ [008] Error Handling ─────────┤                      │
+└─ [009] Code Deduplication** ────┴──> [PHASE 3 GATE] ──┤
+                                                         │
+Phase 4 (Testing/Docs) - Sequential:                        │
+├─ [010] Security Tests ────────────┐                   │
+├─ [011] Route Services Tests ──────┴──> [PHASE 4 GATE] │
+└─ [012] Documentation Generation***                     │
+                                                         │
+                                                    [FINAL GATE]
+```
+
+\* Agent 005 waits for baseline metrics from Agents 002-004
+\** Agent 009 must wait for 006-008 to avoid merge conflicts
+\*** Agent 012 requires stable codebase from 010-011
+
+---
+
+## Progress Dashboard
+
+### Overall Status
+
+| Metric | Current | Target | Status |
+|--------|---------|--------|--------|
+| Performance Score | 62/100 | 80/100 | Pending Phase 2 |
+| Code Quality Score | 58/100 | 75-80/100 | Pending Phase 3 |
+| Test Coverage | 9.1% | 40% | Pending Phase 4 |
+| Documentation Coverage | 48% | 75% | Pending Phase 4 |
+| Code Duplication | 15% | <5% | Pending Agent 009 |
+| Memory Growth | 1-2GB | <500MB | Pending Agent 004 |
+
+### Agent Execution Status
+
+| Phase | Agent | Name | Status | Checkpoint |
+|-------|-------|------|--------|------------|
+| 2 | 002 | XML Parsing | Pending | `progress/phase-2-agent-002-checkpoint.json` |
+| 2 | 003 | Asset Loading | Pending | `progress/phase-2-agent-003-checkpoint.json` |
+| 2 | 004 | Memory Management | Pending | `progress/phase-2-agent-004-checkpoint.json` |
+| 2 | 005 | Coordinate Caching | Pending | `progress/phase-2-agent-005-checkpoint.json` |
+| 3 | 006 | God Object Refactor | Pending | `progress/phase-3-agent-006-checkpoint.json` |
+| 3 | 007 | Type Hints | Pending | `progress/phase-3-agent-007-checkpoint.json` |
+| 3 | 008 | Error Handling | Pending | `progress/phase-3-agent-008-checkpoint.json` |
+| 3 | 009 | Code Deduplication | Pending | `progress/phase-3-agent-009-checkpoint.json` |
+| 4 | 010 | Security Tests | Pending | `progress/phase-4-agent-010-checkpoint.json` |
+| 4 | 011 | Route Services Tests | Pending | `progress/phase-4-agent-011-checkpoint.json` |
+| 4 | 012 | Documentation | Pending | `progress/phase-4-agent-012-checkpoint.json` |
+
+---
+
+## Phase Gate Success Criteria
+
+### Phase 2 Gate (after Agent 005)
+- [ ] Performance score improved from 62 to 80/100
+- [ ] Memory usage reduced by 500MB+
+- [ ] Import time reduced by 40-60%
+- [ ] Asset loading improved by 30-50%
+- [ ] Coordinate transformations 10-15% faster
+- [ ] All Phase 2 tests passing
+
+### Phase 3 Gate (after Agent 009)
+- [ ] Code quality score improved from 58 to 75-80/100
+- [ ] No modules exceed 500 lines (except legacy)
+- [ ] All classes have 3-5 responsibilities maximum
+- [ ] Type hint coverage at 80%+
+- [ ] Zero `print()` statements (except tests)
+- [ ] Code duplication reduced to <5%
+- [ ] All Phase 3 tests passing
+
+### Phase 4 Gate (after Agent 012)
+- [ ] Test coverage increased from 9.1% to 40%
+- [ ] Security test coverage at 30%
+- [ ] Route services test coverage at 60%
+- [ ] Documentation coverage at 75%
+- [ ] API reference complete
+- [ ] Developer guide complete
+- [ ] User guide complete
+- [ ] All Phase 4 tests passing
+
+### Final Gate
+- [ ] All 11 agents completed successfully
+- [ ] All checkpoints validated
+- [ ] All phase gates passed
+- [ ] Rollback procedures tested
+- [ ] Documentation complete
+- [ ] Ready for production release
+
+---
+
+## Testing Procedures Per Phase
+
+### Phase 2 Testing
+
+**Agent 002 (XML Parsing):**
+```bash
+# Baseline measurement
+python tests/performance/test_xml_baseline.py
+
+# Run unit tests
+python -m pytest tests/unit/test_agent_002_xml_parsing.py -v
+
+# Validation
+python tests/performance/test_xml_validation.py
+```
+
+**Agent 003 (Asset Loading):**
+```bash
+# Baseline measurement
+python tests/performance/test_asset_baseline.py
+
+# Run unit tests
+python -m pytest tests/unit/test_agent_003_asset_loading.py -v
+
+# Validation
+python tests/performance/test_asset_validation.py
+```
+
+**Agent 004 (Memory Management):**
+```bash
+# Baseline measurement
+python tests/performance/test_memory_baseline.py
+
+# Run unit tests
+python -m pytest tests/unit/test_agent_004_memory_management.py -v
+
+# Validation
+python tests/performance/test_memory_validation.py
+```
+
+**Agent 005 (Coordinate Caching):**
+```bash
+# Baseline measurement
+python tests/performance/test_coordinate_cache_baseline.py
+
+# Run unit tests
+python -m pytest tests/unit/test_agent_005_coordinate_cache.py -v
+
+# Validation
+python tests/performance/test_coordinate_cache_validation.py
+```
+
+### Phase 3 Testing
+
+**Agent 006 (God Object Refactor):**
+```bash
+# Verify module size limits
+python scripts/count_lines.py route/services/
+# All must be <500 lines
+
+# Verify responsibility count
+python scripts/analyze_responsibilities.py route/services/
+# All must have 3-5 responsibilities
+
+# Run integration tests
+python -m pytest tests/integration/test_agent_006_refactor.py -v
+```
+
+**Agent 007 (Type Hints):**
+```bash
+# Run mypy on target modules
+mypy building/manager.py building/renderer.py osm/import_operator.py bulk/panels.py --strict
+
+# Run unit tests
+python -m pytest tests/unit/test_agent_007_type_hints.py -v
+
+# Verify all existing tests still pass
+python -m pytest tests/ -v
+```
+
+**Agent 008 (Error Handling):**
+```bash
+# Verify no print() statements remain
+grep -rn "print(" cashcab/ | grep -v "test" | wc -l
+# Output must be 0
+
+# Run unit tests
+python -m pytest tests/unit/test_agent_008_error_handling.py -v
+
+# Verify all existing tests still pass
+python -m pytest tests/ -v
+```
+
+**Agent 009 (Code Deduplication):**
+```bash
+# Measure code duplication
+pylint cashcab/ --disable=all --enable=duplicate-code | tee reports/duplication_final.txt
+# Must show <5% duplication
+
+# Run unit tests
+python -m pytest tests/unit/test_agent_009_deduplication.py -v
+
+# Verify all existing tests still pass
+python -m pytest tests/ -v
+```
+
+### Phase 4 Testing
+
+**Agent 010 (Security Tests):**
+```bash
+# Run security tests
+python -m pytest tests/security/ -v
+
+# Verify all existing tests still pass
+python -m pytest tests/ -v
+
+# Generate coverage report
+python -m pytest tests/security/ --cov=cashcab --cov-report=html:reports/security_coverage
+# Must show >=30% coverage
+```
+
+**Agent 011 (Route Services Tests):**
+```bash
+# Run route services tests
+python -m pytest tests/unit/services/ -v
+
+# Verify all existing tests still pass
+python -m pytest tests/ -v
+
+# Generate coverage report for route/services/
+python -m pytest tests/unit/services/ --cov=cashcab.route.services --cov-report=html:reports/services_coverage
+# Must show >=60% coverage
+```
+
+**Agent 012 (Documentation):**
+```bash
+# Verify documentation coverage
+python -m pydocstyle cashcab/ --select=D100,D101,D102,D103 --statistics
+# Must show >=75% coverage
+
+# Build documentation (if sphinx is used)
+sphinx-build -b html docs/ docs/_build/html
+
+# Verify all existing tests still pass
+python -m pytest tests/ -v
+```
+
+---
+
+## Rollback Procedures
+
+### Per-Agent Rollback
+
+Each agent creates a checkpoint before making changes. To rollback:
+
+1. **Identify the agent checkpoint to revert:**
+   ```bash
+   # List checkpoints
+   ls -la progress/
+
+   # Read checkpoint to see files modified
+   cat progress/phase-X-agent-XXX-checkpoint.json
+   ```
+
+2. **Restore files from git:**
+   ```bash
+   # Checkout modified files from checkpoint
+   git checkout HEAD -- file1.py file2.py ...
+   ```
+
+3. **Remove created files:**
+   ```bash
+   # Delete files created by agent
+   rm new_file1.py new_file2.py ...
+   ```
+
+4. **Validate rollback:**
+   ```bash
+   # Run all tests to ensure system is stable
+   python -m pytest tests/ -v
+   ```
+
+### Phase Rollback
+
+To rollback an entire phase:
+
+1. **Identify all checkpoints in phase:**
+   ```bash
+   # List all checkpoints for phase
+   ls progress/phase-X-*
+   ```
+
+2. **Rollback each agent in reverse order:**
+   - Follow per-agent rollback procedure
+   - Start from last agent, work backwards
+
+3. **Validate phase rollback:**
+   ```bash
+   # Run all tests to ensure system is stable
+   python -m pytest tests/ -v
+
+   # Run phase-specific validation
+   # (e.g., performance tests for Phase 2)
+   ```
+
+### Full Rollback
+
+To rollback entire refactoring:
+
+1. **Create rollback branch:**
+   ```bash
+   git checkout -b rollback/full-rollback
+   ```
+
+2. **Reset to pre-refactoring commit:**
+   ```bash
+   # Identify commit before refactoring started
+   git log --oneline | head -20
+
+   # Reset to that commit
+   git reset --hard <commit-hash>
+   ```
+
+3. **Validate system:**
+   ```bash
+   # Run all tests
+   python -m pytest tests/ -v
+
+   # Run end-to-end tests
+   python test-and-audit/test_final_gate_run.py
+   ```
+
+---
+
+## Checkpoint JSON Schema
+
+All agents read/write checkpoint files in `progress/` directory:
+
+```json
+{
+  "agent_id": "002",
+  "agent_name": "XML Parsing Optimization Agent",
+  "phase": 2,
+  "status": "completed",
+  "timestamp": "2025-01-15T14:30:00Z",
+  "files_modified": [
+    "C:/.../parse/osm/__init__.py",
+    "C:/.../route/utils.py"
+  ],
+  "files_created": [
+    "C:/.../parse/osm/streaming_parser.py"
+  ],
+  "files_deleted": [],
+  "tests_passed": [
+    "test_streaming_parser_basic",
+    "test_memory_usage",
+    "test_backward_compat"
+  ],
+  "tests_failed": [],
+  "metrics": {
+    "memory_usage_reduction_mb": 450,
+    "import_time_reduction_pct": 45
+  },
+  "next_steps": [
+    "Agent 003 (Asset Loading) can proceed in parallel",
+    "Agent 004 (Memory Management) should wait for baseline metrics"
+  ],
+  "handoff_notes": "Backward compatibility maintained. No conflicts detected.",
+  "conflicts": []
+}
+```
+
+---
+
+## Critical Files Referenced
+
+### Performance Issues (Phase 2)
+- `route/fetch_operator.py` - God Object (1,756 lines, 15+ responsibilities)
+- `route/utils.py` - XML parsing bottleneck (40-60% of import time)
+- `asset_manager/loader.py` - No connection pooling
+- `route/performance_optimizer.py` - Memory leak sources
+
+### Code Quality Issues (Phase 3)
+- `route/fetch_operator.py` - God Object needing refactoring
+- `__init__.py` - Duplicate property registration (lines 121-149 vs 177-205)
+- Multiple files - Bare except clauses (5+ instances)
+- 80% of codebase has zero test coverage
+
+### Target Modules (Per Phase)
+
+**Phase 2 (Performance):**
+- `parse/osm/__init__.py` - XML streaming parser
+- `route/utils.py` - Coordinate caching
+- `asset_manager/loader.py` - Connection pooling
+- `route/performance_optimizer.py` - Memory management
+
+**Phase 3 (Quality):**
+- `route/fetch_operator.py` - God Object refactor into services
+- `building/manager.py` - Type hints
+- `building/renderer.py` - Type hints
+- `osm/import_operator.py` - Type hints
+- `bulk/panels.py` - Type hints
+- All modules with `print()` - Replace with logging
+- `__init__.py` - Remove duplicate registration
+
+**Phase 4 (Testing/Docs):**
+- `tests/security/` - Security test suite
+- `tests/unit/services/` - Route services unit tests
+- `docs/api_reference.md` - API documentation
+- `CONTRIBUTING.md` - Developer guide
+- `docs/user_guide.md` - User documentation
+
+---
+
+## Success Metrics
+
+| Metric | Current | Target | Timeline |
+|--------|---------|--------|----------|
+| Performance Score | 62/100 | 80/100 | 4 weeks |
+| Code Quality Score | 58/100 | 75-80/100 | 14 weeks |
+| Test Coverage | 9.1% | 40% | 20 weeks |
+| Documentation Coverage | 48% | 75% | 20 weeks |
+| Code Duplication | 15% | <5% | 14 weeks |
+| Memory Growth | 1-2GB | <500MB | 4 weeks |
+| Type Hint Coverage | Unknown | 80% | 14 weeks |
+
+---
+
+## Template Files Reference
+
+- **`prompts/_templates/checkpoint_schema.md`** - JSON schema for checkpoint files
+- **`prompts/_templates/testing_procedure.md`** - Testing procedure template
+
+---
+
+## Execution Instructions for Agents
+
+Each agent prompt follows this structure:
+
+1. **System Prompt** - Role, expertise, constraints, success criteria
+2. **User Prompt**:
+   - Task Overview
+   - Files to Read (with absolute paths)
+   - Files to Modify (with absolute paths)
+   - Files to Create (with absolute paths)
+   - Implementation Steps
+   - Testing Procedure (specific bash commands)
+   - Checkpoint Protocol (JSON schema reference)
+   - Handoff Notes (dependencies and next steps)
+3. **Execution Steps** - Sequential workflow
+
+**Zero-Context Dependency**: Each prompt includes only:
+- File paths (absolute)
+- Success criteria (measurable)
+- Testing commands (copy-paste ready)
+- Checkpoint location
+
+No code explanations, no architectural context, no project history - just what the agent needs to do the job.
+
+---
+
+## Handoff Protocol
+
+### Reading Checkpoints
+
+Before starting, each agent MUST read relevant checkpoints:
+
+```bash
+# Read checkpoint JSON
+cat progress/phase-X-agent-XXX-checkpoint.json
+
+# Extract relevant information
+# - files_modified (avoid conflicts)
+# - metrics (baseline for comparison)
+# - handoff_notes (important for next agent)
+# - conflicts (known issues to watch for)
+```
+
+### Writing Checkpoints
+
+After completion, each agent MUST write checkpoint:
+
+```bash
+# Create checkpoint JSON
+cat > progress/phase-X-agent-XXX-checkpoint.json << 'EOF'
+{
+  "agent_id": "XXX",
+  "agent_name": "Agent Name",
+  "phase": X,
+  "status": "completed",
+  "timestamp": "2025-01-15T14:30:00Z",
+  "files_modified": ["path1", "path2"],
+  "files_created": ["path3"],
+  "files_deleted": [],
+  "tests_passed": ["test1", "test2"],
+  "tests_failed": [],
+  "metrics": {
+    "metric1": value1,
+    "metric2": value2
+  },
+  "next_steps": ["Next agents that can proceed"],
+  "handoff_notes": "Important information for next agent",
+  "conflicts": []
+}
+EOF
+```
+
+---
+
+## Final Notes
+
+### Parallel Execution Opportunities
+
+**Can run in parallel:**
+- Agents 002-003 (Phase 2)
+- Agents 004 with 002-003 (Phase 2, after baseline)
+- Agent 005 after 002-004 (Phase 2)
+- Agents 007-008 (Phase 3)
+- Agent 010-011 (Phase 4, after 006)
+
+**Must run sequentially:**
+- Agent 005 waits for 002-004
+- Agent 009 waits for 006-008
+- Agent 011 waits for 006
+- Agent 012 waits for 010-011
+
+### Stability Principles
+
+- No broad refactors without approval
+- Maintain object naming conventions
+- Preserve animation driver connections
+- Keep CAR_TRAIL as auto-generated derived asset
+- All changes must pass existing tests
+
+### Communication
+
+- Update this master spec after each agent completes
+- Mark completed agents with [X]
+- Update progress dashboard metrics
+- Document any deviations from plan
+
+---
+
+**End of Specification**
+
+This specification is agent-executable and ready for implementation. Each of the 11 agent prompts in `prompts/` contains all necessary information for a zero-context agent to complete its task successfully.

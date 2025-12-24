@@ -60,14 +60,66 @@ def _ensure_addon_enabled() -> None:
         module.register()
 
 
-def _open_base_blend(path: str) -> None:
+def _apply_transferred_settings(payload: dict) -> None:
+    """Apply settings captured from the UI session so bulk matches regular import.
+
+    The regular operator snapshots current scene props before appending
+    assets/base.blend. These must be set before running the operator, otherwise
+    headless workers can inherit base.blend defaults and produce different
+    animation timing.
+    """
     import bpy
 
-    if not path:
+    transfer = payload.get("transfer") or {}
+    addon_settings = transfer.get("addon") or {}
+    scene_settings = transfer.get("scene") or {}
+
+    scene = bpy.context.scene
+    addon = getattr(scene, "blosm", None)
+
+    if addon is not None and isinstance(addon_settings, dict):
+        for key, value in addon_settings.items():
+            try:
+                if hasattr(addon, key):
+                    setattr(addon, key, value)
+            except Exception:
+                continue
+
+    if not isinstance(scene_settings, dict):
         return
-    blend_path = Path(path).resolve()
-    if blend_path.exists():
-        bpy.ops.wm.open_mainfile(filepath=str(blend_path))
+
+    # Core scene timing controls
+    try:
+        if "frame_start" in scene_settings:
+            scene.frame_start = int(scene_settings["frame_start"])
+        if "frame_end" in scene_settings:
+            scene.frame_end = int(scene_settings["frame_end"])
+    except Exception:
+        pass
+
+    try:
+        if "render_fps" in scene_settings:
+            scene.render.fps = int(scene_settings["render_fps"])
+        if "render_fps_base" in scene_settings:
+            scene.render.fps_base = float(scene_settings["render_fps_base"])
+    except Exception:
+        pass
+
+    # CashCab scene vars used by animation drivers/keyframes
+    for key in [
+        "blosm_anim_start",
+        "blosm_anim_end",
+        "blosm_lead_frames",
+        "blosm_route_start",
+        "blosm_route_end",
+    ]:
+        if key not in scene_settings:
+            continue
+        try:
+            if hasattr(scene, key):
+                setattr(scene, key, scene_settings[key])
+        except Exception:
+            continue
 
 
 def _apply_route_settings(payload: dict) -> None:
@@ -172,11 +224,12 @@ def main() -> int:
         "end_address": (payload.get("end_address") or "")[:120],
         "auto_snap": bool(payload.get("auto_snap", True)),
         "has_api_key": bool((payload.get("google_api_key") or "").strip() or os.environ.get("CASHCAB_GOOGLE_API_KEY", "").strip()),
+        "has_transfer": bool(payload.get("transfer")),
         "output_path": payload.get("output_path"),
     })
 
     _ensure_addon_enabled()
-    _open_base_blend(payload.get("base_blend", ""))
+    _apply_transferred_settings(payload)
     _apply_route_settings(payload)
     _run_fetch()
     _validate_scene()

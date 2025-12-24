@@ -141,7 +141,7 @@ def register():
     bpy.types.Scene.blosm_car_trail_tail_shift = bpy.props.FloatProperty(
         name="CAR_TRAIL Tail Shift",
         description="Shared driver shift applied to both bevel_factor_start and bevel_factor_end",
-        default=0.0,
+        default=-1.0,
         min=-100.0,
         max=100.0,
         soft_min=-10.0,
@@ -197,7 +197,7 @@ def register():
     bpy.types.Scene.blosm_car_trail_tail_shift = bpy.props.FloatProperty(
         name="CAR_TRAIL Tail Shift",
         description="Shared driver shift applied to both bevel_factor_start and bevel_factor_end",
-        default=0.0,
+        default=-1.0,
         min=-100.0,
         max=100.0,
         soft_min=-10.0,

@@ -12,9 +12,96 @@ from typing import List
 import bpy
 
 from . import google_sheet, parser
+from .filename_utils import address_only
 from .properties import BulkSettings
 
 _APPEND_SAFE_RE = re.compile(r"[^A-Za-z0-9_\-]+")
+
+_NON_ROUTE_KEYS = [
+    "buildings",
+    "water",
+    "forests",
+    "vegetation",
+    "highways",
+    "railways",
+    "coordinatesAsFilter",
+]
+
+
+def _is_jsonable_primitive(value) -> bool:
+    return value is None or isinstance(value, (bool, int, float, str))
+
+
+def _snapshot_regular_import_settings(context) -> dict:
+    """Capture regular-import settings for a bulk worker run.
+
+    Bulk is intended to run the regular import workflow verbatim; the per-row
+    manifest fields (addresses/coords) act as overrides.
+    """
+    scene = getattr(context, "scene", None)
+    addon = getattr(scene, "blosm", None) if scene else None
+
+    addon_settings: dict[str, object] = {}
+    if addon is not None:
+        for attr in dir(addon):
+            if not (attr.startswith("route_") or attr in _NON_ROUTE_KEYS):
+                continue
+            try:
+                value = getattr(addon, attr)
+            except Exception:
+                continue
+            if _is_jsonable_primitive(value):
+                addon_settings[attr] = value
+
+    scene_settings: dict[str, object] = {}
+    if scene is not None:
+        for key in [
+            "blosm_anim_start",
+            "blosm_anim_end",
+            "blosm_lead_frames",
+            "blosm_route_start",
+            "blosm_route_end",
+        ]:
+            if hasattr(scene, key):
+                try:
+                    value = getattr(scene, key)
+                except Exception:
+                    continue
+                if _is_jsonable_primitive(value):
+                    scene_settings[key] = value
+
+        # FPS affects playback timing (seconds) even if keyframes match.
+        try:
+            scene_settings["render_fps"] = int(getattr(scene.render, "fps", 24))
+            scene_settings["render_fps_base"] = float(
+                getattr(scene.render, "fps_base", 1.0)
+            )
+        except Exception:
+            pass
+
+        try:
+            scene_settings["frame_start"] = int(getattr(scene, "frame_start", 1))
+            scene_settings["frame_end"] = int(getattr(scene, "frame_end", 250))
+        except Exception:
+            pass
+
+    return {"addon": addon_settings, "scene": scene_settings}
+
+
+def _build_worker_cmd(*, blender_bin: str, worker_script: Path, job: dict) -> list[str]:
+    # Important: do NOT open assets/base.blend here. The regular operator
+    # appends the base scene itself; opening base.blend causes a CashCab scene
+    # name collision that can change animation defaults/timing.
+    return [
+        blender_bin,
+        "--factory-startup",
+        "-b",
+        "--python",
+        str(worker_script),
+        "--",
+        "--job_json",
+        json.dumps(job),
+    ]
 
 
 def _slugify(text: str) -> str:
@@ -23,6 +110,10 @@ def _slugify(text: str) -> str:
         return ""
     raw = raw.replace(" ", "_")
     return _APPEND_SAFE_RE.sub("", raw)
+
+
+def _address_slug(text: str) -> str:
+    return _slugify(address_only(text))
 
 
 def _addon_root() -> Path:
@@ -279,7 +370,7 @@ class BLOSM_OT_BulkRunSelected(bpy.types.Operator):
 
         log_root = Path(settings.log_root or tempfile.gettempdir())
         log_root.mkdir(parents=True, exist_ok=True)
-        log_path = log_root / f"{route.shot_code}_{_slugify(route.start_address)}_to_{_slugify(route.end_address)}.log"
+        log_path = log_root / f"{route.shot_code}_{_address_slug(route.start_address)}_to_{_address_slug(route.end_address)}.log"
 
         try:
             output_dir = Path(bpy.path.abspath(settings.output_dir)).resolve()
@@ -289,7 +380,7 @@ class BLOSM_OT_BulkRunSelected(bpy.types.Operator):
             version = (settings.version_label or "V01").strip() or "V01"
             filename = (
                 f"{route.shot_code}_"
-                f"{_slugify(route.start_address)}_to_{_slugify(route.end_address)}_"
+                f"{_address_slug(route.start_address)}_to_{_address_slug(route.end_address)}_"
                 f"{version}.blend"
             )
             output_path = shot_dir / filename
@@ -301,24 +392,18 @@ class BLOSM_OT_BulkRunSelected(bpy.types.Operator):
                 "start_coords": route.start_coords,
                 "end_coords": route.end_coords,
                 "output_path": str(output_path),
-                "base_blend": str(_base_blend_path()),
                 "auto_snap": bool(settings.auto_snap_addresses),
                 "google_api_key": _resolve_google_api_key(context),
+                "transfer": _snapshot_regular_import_settings(context),
             }
 
             blender_bin = bpy.app.binary_path
             worker_script = _worker_script_path()
-            cmd = [
-                blender_bin,
-                "--factory-startup",
-                "-b",
-                str(_base_blend_path()),
-                "--python",
-                str(worker_script),
-                "--",
-                "--job_json",
-                json.dumps(job),
-            ]
+            cmd = _build_worker_cmd(
+                blender_bin=blender_bin,
+                worker_script=worker_script,
+                job=job,
+            )
 
             self._log_handle = open(log_path, "w", encoding="utf-8")
             self._process = subprocess.Popen(cmd, stdout=self._log_handle, stderr=subprocess.STDOUT)
@@ -355,7 +440,7 @@ class BLOSM_OT_BulkRunSelected(bpy.types.Operator):
                     version = (settings.version_label or "V01").strip() or "V01"
                     filename = (
                         f"{route.shot_code}_"
-                        f"{_slugify(route.start_address)}_to_{_slugify(route.end_address)}_"
+                        f"{_address_slug(route.start_address)}_to_{_address_slug(route.end_address)}_"
                         f"{version}.blend"
                     )
                     output_path = shot_dir / filename
