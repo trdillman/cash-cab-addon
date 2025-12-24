@@ -43,7 +43,7 @@ def apply_render_settings(context):
     scene.render.engine = r_data.get("engine", "CYCLES")
     scene.render.resolution_x = r_data.get("resolution_x", 1920)
     scene.render.resolution_y = r_data.get("resolution_y", 1080)
-    scene.render.resolution_percentage = r_data.get("resolution_percentage", 100)
+    scene.render.resolution_percentage = 100
     scene.render.fps = r_data.get("fps", 24)
     scene.render.fps_base = r_data.get("fps_base", 1.0)
     scene.render.pixel_aspect_x = r_data.get("pixel_aspect_x", 1.0)

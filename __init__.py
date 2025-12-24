@@ -33,6 +33,7 @@ _classes = tuple()
 if _IN_BLENDER:
     from . import gui
     from . import routerig
+    from . import bulk
     from .route.fetch_operator import BLOSM_OT_FetchRouteMap, BLOSM_OT_ExtendCityArea
     from .osm.import_operator import BLOSM_OT_ImportData
     from .app import blender as blenderApp
@@ -80,6 +81,7 @@ def register():
 
     # Register GUI (panels, properties, operators)
     gui.register()
+    bulk.register()
 
     # Register animation properties for route drivers
     # Car animation (FOLLOW_PATH constraint)
@@ -234,6 +236,11 @@ def unregister():
             del bpy.types.Scene.blosm_route_object_name
         except Exception:
             pass
+
+    try:
+        bulk.unregister()
+    except Exception:
+        pass
 
     # Unregister GUI
     try:

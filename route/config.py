@@ -56,6 +56,9 @@ class GoogleAPIConfig:
     """
     Google Maps Platform API configuration
     """
+    # Optional environment variable name to source a key from (useful for local testing)
+    api_key_env_var: str = "CASHCAB_GOOGLE_API_KEY"
+    # Optional hardcoded default key (leave blank for safety; only set locally for testing)
     api_key_default: str = ""
     # Default to driving mode
     default_travel_mode: str = "driving"

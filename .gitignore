@@ -19,3 +19,6 @@ e2e_strict_audit_report.xml
 
 # Built addon zip
 *.zip
+
+# Auto Claude data directory
+.auto-claude/
