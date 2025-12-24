@@ -272,6 +272,9 @@ class BLOSM_OT_FetchRouteMap(bpy.types.Operator):
 
     def invoke(self, context, event):
         """Invoke the route operator with dialog"""
+        # Reset any leftover state from a prior cancelled dialog
+        self._prepared = None
+        self._needs_confirm = False
         self._summary_logged = False
         self._over_limit = False
         self._dialog_stats = None
@@ -450,6 +453,12 @@ class BLOSM_OT_FetchRouteMap(bpy.types.Operator):
         except Exception as render_exc:
             print(f"[BLOSM] WARN Render settings application failed: {render_exc}")
 
+        # Ensure viewport clip ranges are set after import (UI sessions only)
+        try:
+            bpy.ops.blosm.set_viewport_clip("EXEC_DEFAULT")
+        except Exception:
+            pass
+
         # Persist imported bbox/tiles for extension UI
         try:
             scene = context.scene
@@ -466,6 +475,7 @@ class BLOSM_OT_FetchRouteMap(bpy.types.Operator):
     def cancel(self, context):
         """Cancel the route operation"""
         self._prepared = None
+        self._needs_confirm = False
         self._summary_logged = False
         self._dialog_stats = None
         self._tile_warning = False

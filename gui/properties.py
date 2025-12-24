@@ -302,6 +302,12 @@ class BlosmProperties(bpy.types.PropertyGroup):
         update=_on_end_address_update,
     )
 
+    route_end_address_lat: bpy.props.FloatProperty(
+        name="End Latitude",
+        description="Latitude of end address (auto-populated)",
+        default=0.0,
+    )
+
     route_end_address_lon: bpy.props.FloatProperty(
         name="End Longitude",
         description="Longitude of end address (auto-populated)",

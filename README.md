@@ -40,6 +40,12 @@ CashCab Route Import is a comprehensive Blender addon that fetches real-world ro
 - **Material system** - Integrated material management for roads and buildings.
 - **Auto Render Settings** - Fast GI, AO, and clamping settings are automatically applied during import.
 
+### ⚡ Native Bulk Import (New)
+- **Google Sheet (CSV export) or local CSV** manifest input.
+- **Route selection list** with sheet-provided status, grouping, and reverse ordering.
+- **Headless-per-route execution** to improve stability (fresh Blender process per route).
+- **Per-route logs** written during batch runs for debugging and auditability.
+
 ## Installation
 
 1. Download the addon ZIP file.
@@ -113,6 +119,12 @@ cash-cab-addon/
 - **Camera missing?** Check "Auto-generate Camera" or use the manual buttons in the "Route Camera" section.
 - **Bad route alignment?** Ensure "Auto Snap" is on.
 - **Import fails?** Check internet connection and API keys.
+
+## Headless / Testing (API Key)
+
+For headless runs (including Bulk Import workers), set:
+
+- `CASHCAB_GOOGLE_API_KEY=<your key>`
 
 ## Version
 **3.0.1** - Integrated RouteRig, Auto Snap, UI Refinement.

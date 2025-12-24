@@ -45,8 +45,8 @@ def ensure_street_labels_collection(scene: bpy.types.Scene) -> bpy.types.Collect
         scene.collection.children.link(coll)
 
     coll.hide_render = True
-    # Visible by default (user preference); labels never render.
-    coll.hide_viewport = False
+    # Hidden by default; labels never render.
+    coll.hide_viewport = True
     try:
         coll.hide_select = False
     except Exception:

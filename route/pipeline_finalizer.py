@@ -3849,7 +3849,8 @@ def run(ctx_or_scene: SceneLike = None) -> dict[str, object]:
         try:
             props = getattr(scene, "blosm", None)
             if props is not None and hasattr(props, "ui_show_street_labels"):
-                props.ui_show_street_labels = True
+                props.ui_show_street_labels = False
+            cc_street_labels.set_street_labels_visible(scene, False)
         except Exception:
             pass
     except Exception as exc:
