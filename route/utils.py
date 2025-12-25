@@ -147,6 +147,13 @@ def resolve_google_api_key(context=None, api_key: str = "") -> str:
     if api_key and str(api_key).strip():
         return str(api_key).strip()
 
+    # Optional local `.env` at addon root (developer/workstation convenience).
+    # Put `CASHCAB_GOOGLE_API_KEY=...` in `<addon_root>/.env`.
+    try:
+        _maybe_load_dotenv()
+    except Exception:
+        pass
+
     # 2) Blender addon preferences
     try:
         addons = getattr(getattr(context, "preferences", None), "addons", None)
@@ -170,6 +177,15 @@ def resolve_google_api_key(context=None, api_key: str = "") -> str:
     except Exception:
         pass
 
+    # Common alternate names (for existing workstation setups).
+    for alt in ("MAPS_GOOGLE_API_KEY", "GOOGLE_MAPS_API_KEY", "GMAPS_API_KEY"):
+        try:
+            val = os.environ.get(alt, "")
+            if val and val.strip():
+                return val.strip()
+        except Exception:
+            continue
+
     # 4) Hardcoded default
     try:
         val = DEFAULT_CONFIG.google_api.api_key_default
@@ -179,6 +195,51 @@ def resolve_google_api_key(context=None, api_key: str = "") -> str:
         pass
 
     return ""
+
+
+_DOTENV_LOADED = False
+
+
+def _maybe_load_dotenv() -> None:
+    """Load addon-root `.env` into os.environ once per process.
+
+    Rules:
+    - Only sets keys that are not already present in os.environ.
+    - Ignores blank lines and comments.
+    - Supports simple KEY=VALUE lines (optionally quoted).
+    """
+    global _DOTENV_LOADED
+    if _DOTENV_LOADED:
+        return
+    _DOTENV_LOADED = True
+
+    try:
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        path = root / ".env"
+        if not path.exists():
+            return
+
+        for raw in path.read_text(encoding="utf-8-sig").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip()
+            if not key:
+                continue
+            if (value.startswith('"') and value.endswith('"')) or (
+                value.startswith("'") and value.endswith("'")
+            ):
+                value = value[1:-1]
+            if key not in os.environ:
+                os.environ[key] = value
+    except Exception:
+        return
 
 
 def _throttle_nominatim():

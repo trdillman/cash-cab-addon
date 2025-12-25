@@ -22,3 +22,6 @@ e2e_strict_audit_report.xml
 
 # Auto Claude data directory
 .auto-claude/
+
+# Local secrets (never commit)
+.env

@@ -70,6 +70,13 @@ def register():
         # Allow tests and tooling to import package safely
         return
 
+    # Load optional `.env` from addon root so users can keep API keys local.
+    try:
+        from .route import utils as route_utils
+        route_utils._maybe_load_dotenv()
+    except Exception:
+        pass
+
     # Register main route operator
     for cls in _classes:
         bpy.utils.register_class(cls)
