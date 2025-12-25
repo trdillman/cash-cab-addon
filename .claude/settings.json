@@ -1,0 +1,13 @@
+{
+  "enabledPlugins": {
+    "n8n-workflow-builder@claude-code-marketplace": true,
+    "file-organizer@awesome-claude-skills": true,
+    "double-check@claude-code-marketplace": true,
+    "update-claudemd@claude-code-marketplace": true,
+    "workflow-optimizer@claude-code-marketplace": true,
+    "codex-skill@claude-code-settings": true,
+    "create-worktrees@claude-code-marketplace": true,
+    "claude-code-settings@claude-code-settings": true,
+    "spec-kit-skill@claude-code-settings": true
+  }
+}
