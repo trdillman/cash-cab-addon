@@ -13,24 +13,38 @@ def _abspath(path: str) -> str:
 
 def _ensure_addon_enabled() -> None:
     """
-    Ensure the *installed/enabled* CashCab addon is available.
+    Ensure the CashCab addon is available.
 
-    This script is intentionally not loading the repo's __init__.py; it should
-    operate through the normal Blender addon system.
+    Prefer loading from the repo checkout (matches our other E2E harnesses) so
+    this audit works in dev environments where the addon isn't installed into
+    Blender's user addon path.
     """
-    import addon_utils
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from test_e2e_toronto_strict import _load_addon_module
 
-    candidates = ["cash_cab_addon", "cash-cab-addon", "blosm"]
-    for module in candidates:
-        try:
-            is_default, is_loaded = addon_utils.check(module)
-            if is_loaded:
-                return
-            if is_default:
-                bpy.ops.preferences.addon_enable(module=module)
-                return
-        except Exception:
-            continue
+        _load_addon_module()
+        return
+    except Exception:
+        pass
+
+    # Fallback: try enabling an installed addon by module name.
+    try:
+        import addon_utils
+
+        candidates = ["cash_cab_addon", "cash-cab-addon", "blosm"]
+        for module in candidates:
+            try:
+                is_default, is_loaded = addon_utils.check(module)
+                if is_loaded:
+                    return
+                if is_default:
+                    bpy.ops.preferences.addon_enable(module=module)
+                    return
+            except Exception:
+                continue
+    except Exception:
+        pass
 
 
 def main() -> int:

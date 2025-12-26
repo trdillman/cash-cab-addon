@@ -148,8 +148,54 @@ class BLOSM_PT_RouteImport(bpy.types.Panel):
         
         if addon.ui_show_route_camera:
             row = camera_box.row(align=True)
-            row.operator("routerig.spawn_test_camera", text="Spawn Camera", icon='CAMERA_DATA')
-            row.operator("routerig.generate_camera_animation", text="Animate Camera", icon='ANIM')
+            row.operator("routerig.spawn_test_camera", text="Spawn RouteRig Camera", icon='CAMERA_DATA')
+            row.operator("routerig.generate_camera_animation", text="Regenerate RouteRig Animation", icon='ANIM')
+
+            camera_box.label(
+                text="Orbit/Ortho can preview live; Seed/End needs regen (or enable Live Update).",
+                icon='INFO',
+            )
+
+            rig = getattr(context.scene, "routerig", None)
+            controls = camera_box.column(align=True)
+            controls.label(text="RouteRig Tweaks", icon='ORIENTATION_GIMBAL')
+            if rig:
+                controls.separator()
+                controls.label(text="Seeded Micro-Variation", icon='RNDCURVE')
+                controls.prop(rig, "routerig_seed", text="Seed")
+                controls.prop(rig, "routerig_variance", text="Variance")
+
+                controls.separator()
+                controls.label(text="End-Pose Visibility", icon='HIDE_OFF')
+                controls.prop(rig, "routerig_endpose_visibility", text="Fix End Occlusion")
+                if rig.routerig_endpose_visibility:
+                    controls.prop(rig, "routerig_endpose_blend_window", text="Blend Window")
+
+                controls.separator()
+                controls.label(text="Orbit / Ortho", icon='DRIVER_ROTATIONAL_DIFFERENCE')
+                controls.prop(rig, "routerig_orbit_deg", text="Orbit Angle (deg)")
+                controls.prop(rig, "routerig_orbit_radius", text="Orbit Radius Offset")
+                controls.prop(rig, "routerig_orbit_apply_to_keys_only", text="Apply to Keyframes Only")
+                controls.prop(rig, "routerig_ortho_delta", text="Ortho Scale Delta")
+
+                controls.separator()
+                controls.label(text="Update Behavior", icon='REC')
+                controls.prop(rig, "routerig_live_preview", text="Live preview Orbit/Ortho")
+                controls.prop(rig, "routerig_live_update", text="Live update Seed/End (debounced regen)")
+                if rig.routerig_live_update:
+                    controls.prop(rig, "routerig_live_update_debounce_ms", text="Debounce (ms)")
+
+                row = controls.row(align=True)
+                row.operator("routerig.spawn_new_camera", text="Spawn New Camera (keep old)", icon='DUPLICATE')
+
+                controls.separator()
+                controls.label(text="Random Variants", icon='OUTLINER_OB_CAMERA')
+                controls.prop(rig, "routerig_variants_count", text="Count")
+                controls.prop(rig, "routerig_variants_variation", text="Variation")
+                controls.prop(rig, "routerig_variants_make_active", text="Make last active")
+                controls.operator("routerig.spawn_variant_cameras", text="Spawn Variant Cameras", icon='ADD')
+            else:
+                controls.label(text="RouteRig settings unavailable (scene missing routerig)", icon='ERROR')
 
 
         # 4. Extend City (Collapsible)

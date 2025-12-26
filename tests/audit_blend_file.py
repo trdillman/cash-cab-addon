@@ -117,6 +117,13 @@ def _check_visibility_expectations(obj_audit, coll_audit_list):
     # Environment objects should be visible
     env_names = ['Ground_Plane_Result', 'Water_Plane_Result', 'Islands_Mesh', 'Lake_Mesh_Cutter']
     if name in env_names:
+        if name == 'Lake_Mesh_Cutter':
+            return {
+                'expected_viewport_visible': False,
+                'expected_render_visible': False,
+                'expected_view_layer_excluded': False,
+                'notes': 'Cutter mesh - should be hidden'
+            }
         return {
             'expected_viewport_visible': True,
             'expected_render_visible': True,
@@ -126,15 +133,23 @@ def _check_visibility_expectations(obj_audit, coll_audit_list):
     
     # Collection-specific checks
     for coll in coll_audit_list:
-        if name in [obj.name for obj in coll.objects]:
-            if 'ASSET_' in coll.name or coll.name in ['LIGHTING']:
-                return {
-                    'expected_viewport_visible': True,
-                    'expected_render_visible': True,
-                    'expected_view_layer_excluded': False,
-                    'notes': f'Asset collection object ({coll.name}) - should be visible'
-                }
-    
+        coll_obj = coll
+        if isinstance(coll, dict) and 'name' in coll:
+            coll_obj = bpy.data.collections.get(coll['name'])
+        if coll_obj is None or not hasattr(coll_obj, "objects"):
+            continue
+        try:
+            if name in [obj.name for obj in coll_obj.objects]:
+                if 'ASSET_' in coll_obj.name or coll_obj.name in ['LIGHTING']:
+                    return {
+                        'expected_viewport_visible': True,
+                        'expected_render_visible': True,
+                        'expected_view_layer_excluded': False,
+                        'notes': f'Asset collection object ({coll_obj.name}) - should be visible'
+                    }
+        except Exception:
+            continue
+
     return {
         'expected_viewport_visible': True,  # Default expectation
         'expected_render_visible': True,
@@ -146,14 +161,20 @@ def _evaluate_visibility_compliance(obj_audit, expectations):
     """Evaluate if object meets visibility expectations"""
     name = obj_audit['name']
     issues = []
-    
+
     # Check viewport visibility
-    if obj_audit['hide_viewport'] != expectations['expected_viewport_visible']:
-        issues.append(f"Viewport visibility mismatch: expected {expectations['expected_viewport_visible']}, got {obj_audit['hide_viewport']}")
-    
-    # Check render visibility  
-    if obj_audit['hide_render'] != expectations['expected_render_visible']:
-        issues.append(f"Render visibility mismatch: expected {expectations['expected_render_visible']}, got {obj_audit['hide_render']}")
+    actual_viewport_visible = not bool(obj_audit.get('hide_viewport', False))
+    if actual_viewport_visible != expectations['expected_viewport_visible']:
+        issues.append(
+            f"Viewport visibility mismatch: expected {expectations['expected_viewport_visible']}, got {actual_viewport_visible}"
+        )
+
+    # Check render visibility
+    actual_render_visible = not bool(obj_audit.get('hide_render', False))
+    if actual_render_visible != expectations['expected_render_visible']:
+        issues.append(
+            f"Render visibility mismatch: expected {expectations['expected_render_visible']}, got {actual_render_visible}"
+        )
     
     # Check view layer exclusion
     if obj_audit['view_layer_excluded'] != expectations['expected_view_layer_excluded']:

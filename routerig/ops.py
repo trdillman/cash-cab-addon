@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import random
 
 import bpy
 
@@ -192,6 +193,18 @@ class ROUTERIG_OT_generate_camera_animation(bpy.types.Operator):
             active_end=active_end,
         )
 
+        settings = context.scene.routerig
+        log.info(
+            "RouteRig seed=%d variance=%.3f end_vis=%s orbit_deg=%.2f orbit_radius=%.2f ortho_delta=%.2f keys_only=%s",
+            int(getattr(settings, "routerig_seed", 0)),
+            float(getattr(settings, "routerig_variance", 0.0)),
+            bool(getattr(settings, "routerig_endpose_visibility", False)),
+            float(getattr(settings, "routerig_orbit_deg", 0.0)),
+            float(getattr(settings, "routerig_orbit_radius", 0.0)),
+            float(getattr(settings, "routerig_ortho_delta", 0.0)),
+            bool(getattr(settings, "routerig_orbit_apply_to_keys_only", True)),
+        )
+
         cam_obj = generate_camera_animation(
             scene=context.scene,
             start_obj=start_obj,
@@ -204,4 +217,148 @@ class ROUTERIG_OT_generate_camera_animation(bpy.types.Operator):
         )
 
         self.report({"INFO"}, f"Generated keys on {cam_obj.name} at {keyframes}")
+        return {"FINISHED"}
+
+
+def _next_available_camera_name(prefix: str, *, digits: int = 3) -> str:
+    existing = set(bpy.data.objects.keys())
+    for i in range(1, 10**digits):
+        name = f"{prefix}{i:0{digits}d}"
+        if name not in existing:
+            return name
+    # Fallback: let Blender suffixing happen if we somehow exhaust.
+    return f"{prefix}{'9' * digits}"
+
+
+class ROUTERIG_OT_spawn_new_camera(bpy.types.Operator):
+    bl_idname = "routerig.spawn_new_camera"
+    bl_label = "Spawn New RouteRig Camera (Keep Existing)"
+    bl_description = "Generate a new RouteRig camera without overwriting the existing one"
+    bl_options = {"REGISTER", "UNDO"}
+
+    make_active: bpy.props.BoolProperty(  # type: ignore[valid-type]
+        name="Make Active",
+        default=True,
+        description="Set the spawned camera as the active scene camera",
+    )
+
+    def execute(self, context: bpy.types.Context) -> set[str]:
+        start_obj = find_object(CANON_START)
+        end_obj = find_object(CANON_END)
+        route_obj = find_object_any(CANON_ROUTE_ALIASES)
+        car_obj = find_object(CANON_CAR)
+        if not (start_obj and end_obj and route_obj and car_obj):
+            self.report({"WARNING"}, "Cannot spawn: missing MARKER_START/END/ROUTE/CAR_LEAD")
+            return {"CANCELLED"}
+
+        profile = load_default_profile()
+        cam_name = _next_available_camera_name("ROUTERIG_CAMERA_V")
+        cam_obj = generate_camera_animation(
+            scene=context.scene,
+            start_obj=start_obj,
+            end_obj=end_obj,
+            car_obj=car_obj,
+            route_obj=route_obj,
+            camera_name=cam_name,
+            keyframes=None,
+            profile=profile,
+        )
+        if bool(self.make_active):
+            context.scene.camera = cam_obj
+        self.report({"INFO"}, f"Spawned {cam_obj.name}")
+        return {"FINISHED"}
+
+
+class ROUTERIG_OT_spawn_variant_cameras(bpy.types.Operator):
+    bl_idname = "routerig.spawn_variant_cameras"
+    bl_label = "Spawn Variant RouteRig Cameras"
+    bl_description = "Spawn multiple RouteRig cameras using randomized tweak settings"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context: bpy.types.Context) -> set[str]:
+        start_obj = find_object(CANON_START)
+        end_obj = find_object(CANON_END)
+        route_obj = find_object_any(CANON_ROUTE_ALIASES)
+        car_obj = find_object(CANON_CAR)
+        if not (start_obj and end_obj and route_obj and car_obj):
+            self.report({"WARNING"}, "Cannot spawn variants: missing MARKER_START/END/ROUTE/CAR_LEAD")
+            return {"CANCELLED"}
+
+        settings = context.scene.routerig
+        count = int(getattr(settings, "routerig_variants_count", 5))
+        variation = float(getattr(settings, "routerig_variants_variation", 0.35))
+        make_active = bool(getattr(settings, "routerig_variants_make_active", True))
+
+        # Snapshot original settings to restore.
+        original = {
+            "routerig_seed": int(getattr(settings, "routerig_seed", 0)),
+            "routerig_variance": float(getattr(settings, "routerig_variance", 0.0)),
+            "routerig_endpose_visibility": bool(getattr(settings, "routerig_endpose_visibility", False)),
+            "routerig_endpose_blend_window": int(getattr(settings, "routerig_endpose_blend_window", 8)),
+            "routerig_orbit_deg": float(getattr(settings, "routerig_orbit_deg", 0.0)),
+            "routerig_orbit_radius": float(getattr(settings, "routerig_orbit_radius", 0.0)),
+            "routerig_orbit_apply_to_keys_only": bool(getattr(settings, "routerig_orbit_apply_to_keys_only", True)),
+            "routerig_ortho_delta": float(getattr(settings, "routerig_ortho_delta", 0.0)),
+        }
+
+        from . import scene_props
+
+        profile = load_default_profile()
+        spawned: list[bpy.types.Object] = []
+
+        scene_props._suspend_updates_begin()
+        try:
+            for i in range(1, max(1, count) + 1):
+                # Conservative random ranges; "variation" scales the magnitude.
+                setattr(settings, "routerig_seed", random.randint(1, 2_000_000_000))
+                setattr(
+                    settings,
+                    "routerig_variance",
+                    max(0.0, min(1.0, float(original["routerig_variance"]) + random.random() * 0.6 * variation)),
+                )
+                setattr(settings, "routerig_endpose_visibility", bool(original["routerig_endpose_visibility"]))
+                setattr(settings, "routerig_endpose_blend_window", int(original["routerig_endpose_blend_window"]))
+                setattr(
+                    settings,
+                    "routerig_orbit_deg",
+                    float(original["routerig_orbit_deg"]) + random.uniform(-15.0, 15.0) * variation,
+                )
+                setattr(
+                    settings,
+                    "routerig_orbit_radius",
+                    float(original["routerig_orbit_radius"]) + random.uniform(-30.0, 30.0) * variation,
+                )
+                setattr(settings, "routerig_orbit_apply_to_keys_only", bool(original["routerig_orbit_apply_to_keys_only"]))
+                setattr(
+                    settings,
+                    "routerig_ortho_delta",
+                    float(original["routerig_ortho_delta"]) + random.uniform(-150.0, 150.0) * variation,
+                )
+
+                cam_name = _next_available_camera_name("ROUTERIG_CAMERA_RAND_", digits=2)
+                cam_obj = generate_camera_animation(
+                    scene=context.scene,
+                    start_obj=start_obj,
+                    end_obj=end_obj,
+                    car_obj=car_obj,
+                    route_obj=route_obj,
+                    camera_name=cam_name,
+                    keyframes=None,
+                    profile=profile,
+                )
+                spawned.append(cam_obj)
+
+        finally:
+            # Restore user settings.
+            for k, v in original.items():
+                try:
+                    setattr(settings, k, v)
+                except Exception:
+                    pass
+            scene_props._suspend_updates_end()
+
+        if make_active and spawned:
+            context.scene.camera = spawned[-1]
+
+        self.report({"INFO"}, f"Spawned {len(spawned)} camera(s)")
         return {"FINISHED"}

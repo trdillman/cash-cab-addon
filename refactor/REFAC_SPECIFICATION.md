@@ -3,7 +3,7 @@
 ## Objective
 
 Transform the high-level refactoring workflow into **detailed, agent-executable prompts** with:
-- 10 specialized agent prompts (Phases 2-4: Performance, Quality, Testing/Docs)
+- 12 specialized agent prompts (Phases 2-4: Performance, Quality, Testing/Docs)
 - Zero-context dependency (fresh agents can pick up any step)
 - State-based handoff mechanism (JSON checkpoint files)
 - Dual progress tracking (Markdown + JSON)
@@ -11,6 +11,69 @@ Transform the high-level refactoring workflow into **detailed, agent-executable 
 - Minimal context approach (file paths + success criteria only)
 
 **Scope**: Skip security (handled by another team), focus on performance optimization (Phase 2) + code quality refactoring (Phase 3) + testing/documentation (Phase 4). **Timeline**: 20 weeks.
+
+**Current Status**: Some refactoring already completed:
+- ✅ Route services layer implemented (`route/services/` with base.py, google_maps.py, preparation.py)
+- ✅ Type hints coverage at 78% (101/128 files)
+- ⚠️ 659 print() statements still need logging conversion
+- ⚠️ God object `route/fetch_operator.py` still at 1,780 lines (target: <500 per module)
+
+---
+
+## Recent Codebase Changes (as of 2025-01-15)
+
+### Implemented Features (Pre-Refactoring)
+
+**1. Route Services Layer (Partial God Object Refactor)**
+- ✅ Created `route/services/` module structure
+- ✅ Implemented `base.py` with `ServiceResult` and `ServiceError` abstractions
+- ✅ Implemented `google_maps.py` for geocoding and route calculation (187 lines)
+- ✅ Implemented `preparation.py` for route preparation services
+- **Status**: Service layer exists but `fetch_operator.py` still 1,780 lines
+- **Implication**: Agent 008 should extend existing services rather than create from scratch
+
+**2. Type Hints (Near Completion)**
+- ✅ 78% coverage (101/128 Python files use type hints)
+- ⚠️ Target: 80%
+- **Status**: Agent 009 work is mostly done, only need to add hints to remaining 27 files
+- **Implication**: Agent 009 effort estimate can be reduced from 24 hours to ~4-6 hours
+
+**3. Routerig Camera System**
+- ✅ Added complete camera rig system (2,551 lines across 14 files)
+- ✅ Implemented smooth camera keyframes and timeline alignment
+- ✅ Added camera animation, spawning, and scene props
+- **Status**: Complete, not in refactor scope
+- **Implication**: None (separate module from route/)
+
+**4. GUI Enhancements**
+- ✅ Added 167 lines of operators and improved panels
+- ✅ Added preferences system for Google API key
+- ✅ Updated properties with better organization
+- **Status**: Complete, minor cleanup may be needed
+
+### Outstanding Issues
+
+**1. Logging vs Print Statements**
+- **Current**: 659 print() statements in non-test code
+- **Target**: 0 print() statements (except tests)
+- **Logging Usage**: Only 6 files import logging module
+- **Implication**: Agent 010 has significant work ahead (16 hours estimate realistic)
+
+**2. God Object (`route/fetch_operator.py`)**
+- **Current**: 1,780 lines
+- **Target**: <500 lines per module (split into 4 services)
+- **Status**: Service layer exists but not fully utilized
+- **Implication**: Agent 008 should refactor fetch_operator to delegate to existing services
+
+**3. Code Duplication**
+- **Current**: 15% duplication rate
+- **Target**: <5%
+- **Implication**: Agent 011 still needed (8 hours)
+
+**4. Test Coverage**
+- **Current**: 9.1% (26 test files exist)
+- **Target**: 40%
+- **Implication**: Agent 012 significant work ahead
 
 ---
 
@@ -79,13 +142,16 @@ Transform the high-level refactoring workflow into **detailed, agent-executable 
   - Output: `progress/phase-3-agent-007-checkpoint.json`
 
 - [ ] **[008] God Object Refactor** (`prompts/008_god_object_refactor_agent.md`)
-  - Split `route/fetch_operator.py` (1,781 lines) into 4 focused services
-  - Target: <500 lines per module, 3-5 responsibilities per class
+  - Split `route/fetch_operator.py` (1,780 lines) into 4 focused services
+  - **Note**: `route/services/` already exists with base.py, google_maps.py, preparation.py
+  - Target: Extend existing services, <500 lines per module, 3-5 responsibilities per class
   - Output: `progress/phase-3-agent-008-checkpoint.json`
 
 - [ ] **[009] Type Hints** (`prompts/009_type_hints_agent.md`)
-  - Add type hints to building/, osm/, bulk/ modules
-  - Target: 80% type hint coverage
+  - Add type hints to remaining modules (27 files missing hints)
+  - **Note**: Already 78% complete (101/128 files have hints)
+  - Target: 80% type hint coverage (only 2% more needed)
+  - Estimated effort: 4-6 hours (reduced from 24 hours)
   - Output: `progress/phase-3-agent-009-checkpoint.json`
 
 - [ ] **[010] Error Handling** (`prompts/010_error_handling_agent.md`)
@@ -168,6 +234,10 @@ Phase 4 (Testing/Docs) - Sequential:
 | Code Duplication | 15% | <5% | Pending Agent 011 |
 | Memory Growth | 1-2GB | <500MB | Pending Agent 005 |
 | Geocode Cache Hit Rate | 0% | 90% | Pending Agent 003 |
+| Type Hints Coverage | 78% | 80% | ⚠️ Almost there (Agent 009) |
+| Print Statements | 659 | 0 | Pending Agent 010 |
+| Route Services Layer | ✅ Implemented | Complete | Pre-refactored |
+| God Object Size | 1,780 lines | <500 lines | Pending Agent 008 |
 
 ### Agent Execution Status
 
@@ -513,17 +583,24 @@ All agents read/write checkpoint files in `progress/` directory:
 ## Critical Files Referenced
 
 ### Performance Issues (Phase 2)
-- `route/fetch_operator.py` - God Object (1,781 lines, 40+ methods)
+- `route/fetch_operator.py` - God Object (1,780 lines, 40+ methods)
 - `route/utils.py` - XML parsing bottleneck (40-60% of import time)
 - `asset_manager/loader.py` - No connection pooling
 - `route/performance_optimizer.py` - Memory leak sources
 
 ### Code Quality Issues (Phase 3)
 - `route/fetch_operator.py` - God Object needing refactoring
+- ⚠️ **Note**: Service layer exists at `route/services/` but not fully utilized
 - `__init__.py` - Duplicate property registration (lines 121-149 vs 177-205)
-- Multiple files - Bare except clauses (431 instances)
-- 80% of codebase has zero test coverage
+- Multiple files - 659 print() statements (need logging conversion)
 - 200+ unused imports across codebase
+
+### Already Implemented (Pre-Refactoring)
+- ✅ `route/services/base.py` - Service abstractions (ServiceResult, ServiceError)
+- ✅ `route/services/google_maps.py` - Geocoding service (187 lines)
+- ✅ `route/services/preparation.py` - Route preparation service
+- ✅ Type hints in 78% of files (101/128)
+- ✅ `routerig/` - Complete camera rig system (2,551 lines, not in refactor scope)
 
 ### Target Modules (Per Phase)
 
@@ -535,12 +612,9 @@ All agents read/write checkpoint files in `progress/` directory:
 
 **Phase 3 (Quality):**
 - `refactor/cleanup_script.py` - Code cleanup (auto-generated)
-- `route/fetch_operator.py` - God Object refactor into services
-- `building/manager.py` - Type hints
-- `building/renderer.py` - Type hints
-- `osm/import_operator.py` - Type hints
-- `bulk/panels.py` - Type hints
-- All modules with `print()` - Replace with logging
+- `route/fetch_operator.py` - **Extend** existing services (don't create from scratch)
+- **Type Hints** - Only 27 remaining files (78% already done)
+- All modules with `print()` - Replace with logging (659 statements)
 - `__init__.py` - Remove duplicate registration
 
 **Phase 4 (Testing/Docs):**
@@ -553,17 +627,19 @@ All agents read/write checkpoint files in `progress/` directory:
 
 ## Success Metrics
 
-| Metric | Current | Target | Timeline |
-|--------|---------|--------|----------|
-| Performance Score | 62/100 | 80/100 | 4 weeks |
-| Code Quality Score | 58/100 | 75-80/100 | 14 weeks |
-| Test Coverage | 9.1% | 40% | 20 weeks |
-| Documentation Coverage | 48% | 75% | 20 weeks |
-| Code Duplication | 15% | <5% | 14 weeks |
-| Memory Growth | 1-2GB | <500MB | 4 weeks |
-| Type Hint Coverage | Unknown | 80% | 14 weeks |
-| Geocode Cache Hit Rate | 0% | 90% | 4 weeks |
-| Unused Imports | 200+ | 0 | 4 hours |
+| Metric | Current | Target | Timeline | Notes |
+|--------|---------|--------|----------|-------|
+| Performance Score | 62/100 | 80/100 | 4 weeks | |
+| Code Quality Score | 58/100 | 75-80/100 | 14 weeks | |
+| Test Coverage | 9.1% | 40% | 20 weeks | 26 test files exist |
+| Documentation Coverage | 48% | 75% | 20 weeks | |
+| Code Duplication | 15% | <5% | 14 weeks | |
+| Memory Growth | 1-2GB | <500MB | 4 weeks | |
+| Type Hint Coverage | **78%** | 80% | **4-6 hours** | ⚠️ Almost there! |
+| Geocode Cache Hit Rate | 0% | 90% | 4 weeks | |
+| Unused Imports | 200+ | 0 | 4 hours | |
+| Print Statements | **659** | 0 | 16 hours | Only 6 files use logging |
+| Route Services Layer | **Implemented** | Complete | ✅ Done | Base abstractions exist |
 
 ---
 

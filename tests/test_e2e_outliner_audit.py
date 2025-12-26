@@ -7,7 +7,7 @@ executes the outliner visibility audit in the same Blender session to verify
 the visibility states of all imported objects and collections.
 
 Usage:
-    blender -b --python test_e2e_with_outliner_audit.py
+    blender -b --python tests/test_e2e_outliner_audit.py
 """
 
 import importlib.util
@@ -26,7 +26,7 @@ from test_e2e_then_strict_toronto import (
 )
 
 # Import the outliner audit functions
-from test_outliner_visibility_audit import (
+from audit_outliner_visibility import (
     _get_high_signal_objects, _get_high_signal_collections,
     _audit_object_visibility, _audit_collection_visibility,
     _check_visibility_expectations, _evaluate_visibility_compliance
@@ -47,6 +47,12 @@ def _get_view_layer_excluded(obj):
 
 def main():
     _log("Starting Combined E2E Test + Outliner Visibility Audit")
+
+    save_label = "combined_e2e_audit"
+    save_index = 1
+    default_outdir = Path.home() / "Desktop" / "CashCab_QA"
+    save_outdir = Path(os.environ.get("CASHCAB_E2E_OUTDIR", str(default_outdir)))
+    saved_blend_path = save_outdir / f"{save_label}_{save_index}.blend"
     
     # Step 1: Run E2E test workflow
     try:
@@ -70,7 +76,7 @@ def main():
             _log("Strict audit failed")
             return 1
             
-        _save_blend(1, "combined_e2e_audit")
+        _save_blend(save_index, save_label)
         _log("E2E workflow completed successfully")
         
     except Exception as exc:
@@ -156,7 +162,7 @@ def main():
             render_status = "HIDDEN" if obj['hide_render'] else "VISIBLE"
             viewlayer_status = "EXCLUDED" if obj['view_layer_excluded'] else "INCLUDED"
             
-            compliance_icon = "✅" if obj['compliance']['compliant'] else "❌"
+            compliance_icon = "OK" if obj['compliance']['compliant'] else "FAIL"
             issues_str = "; ".join(obj['compliance']['issues']) if obj['compliance']['issues'] else "OK"
             
             print(f"{obj['name']:<15} | {obj['type']:<6} | {viewport_status:<8} | {render_status:<6} | {viewlayer_status:<9} | {obj['role']:<6} | {compliance_icon:<10} | {issues_str}")
@@ -227,7 +233,7 @@ def main():
         print(f"- E2E strict audit: {'PASSED' if audit_ok else 'FAILED'}")
         print(f"- Audited {len(high_signal_objects)} high-signal objects and {len(high_signal_collections)} collections")
         print(f"- Applied CashCab visibility conventions and expectations")
-        print(f"- Scene saved to: Desktop/CashCab_QA/RUN1_combined_e2e_audit.blend")
+        print(f"- Scene saved to: {saved_blend_path}")
         
         return 0 if overall_pass else 1
         

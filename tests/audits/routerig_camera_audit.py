@@ -448,6 +448,17 @@ def main() -> int:
     report_lines.append(f"- Render: `{_render_settings_summary(scene)}`")
     report_lines.append(f"- RouteRig profile keyframes: `{keyframes}`")
     report_lines.append(f"- RouteRig soft_clip: `{soft_clip}`")
+    rig = getattr(scene, "routerig", None)
+    if rig is not None:
+        report_lines.append(
+            f"- RouteRig seed/variance: `{int(getattr(rig,'routerig_seed',0))}` / `{float(getattr(rig,'routerig_variance',0.0))}`"
+        )
+        report_lines.append(
+            f"- RouteRig end_vis: `{bool(getattr(rig,'routerig_endpose_visibility',False))}`"
+        )
+        report_lines.append(
+            f"- RouteRig orbit/ortho: deg `{float(getattr(rig,'routerig_orbit_deg',0.0))}` radius `{float(getattr(rig,'routerig_orbit_radius',0.0))}` ortho_delta `{float(getattr(rig,'routerig_ortho_delta',0.0))}`"
+        )
     report_lines.append("")
 
     # Pre-state

@@ -1,13 +1,26 @@
 {
   "enabledPlugins": {
-    "n8n-workflow-builder@claude-code-marketplace": true,
-    "file-organizer@awesome-claude-skills": true,
-    "double-check@claude-code-marketplace": true,
-    "update-claudemd@claude-code-marketplace": true,
-    "workflow-optimizer@claude-code-marketplace": true,
+    "claude-code-settings@claude-code-settings": true,
     "codex-skill@claude-code-settings": true,
     "create-worktrees@claude-code-marketplace": true,
-    "claude-code-settings@claude-code-settings": true,
-    "spec-kit-skill@claude-code-settings": true
+    "double-check@claude-code-marketplace": true,
+    "file-organizer@awesome-claude-skills": true,
+    "n8n-workflow-builder@claude-code-marketplace": true,
+    "spec-kit-skill@claude-code-settings": true,
+    "update-claudemd@claude-code-marketplace": true,
+    "workflow-optimizer@claude-code-marketplace": true
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "jq -r '\"(.tool_input.command) - (.tool_input.description // \"No description\")\"' >> ~/.claude/bash-command-log.txt",
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash"
+      }
+    ]
   }
 }

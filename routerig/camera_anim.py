@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import copy
+import json
 import math
+import random
 from dataclasses import dataclass
 
 import bmesh
@@ -18,7 +21,7 @@ from .style_profile import Keyframe1D, eval_keys
 class CameraState:
     frame: int
     location: Vector
-    rotation_quaternion: Quaternion
+    rotation_euler: Euler
     ortho_scale: float
     focus_points_world: list[Vector]
 
@@ -62,7 +65,7 @@ def _ensure_euler_continuity(prev: Euler | None, curr: Euler) -> Euler:
     return out
 
 
-def _clear_routerig_camera_animation(cam_obj: bpy.types.Object) -> None:
+def _clear_routerig_camera_animation(cam_obj: bpy.types.Object) -> None:        
     """Remove prior RouteRig fcurves so reruns don't leave quaternion curves behind."""
     actions: list[bpy.types.Action] = []
     if cam_obj.animation_data and cam_obj.animation_data.action:
@@ -78,6 +81,14 @@ def _clear_routerig_camera_animation(cam_obj: bpy.types.Object) -> None:
                     action.fcurves.remove(fc)
                 except Exception:
                     pass
+
+    # Clear any "live preview" baseline stored on this camera so future updates
+    # re-snapshot correctly after a full regeneration.
+    try:
+        if "_routerig_live_base_json" in cam_obj:
+            del cam_obj["_routerig_live_base_json"]
+    except Exception:
+        pass
 
 
 def _heading_yaw_deg(car_pos: Vector, car_pos2: Vector) -> float:
@@ -241,6 +252,216 @@ def _find_kp_by_frame(fc: bpy.types.FCurve, frame: int) -> bpy.types.KeyframePoi
     if best is None or best_dx > 0.25:
         return None
     return best
+
+
+def _fcurve_by_path_index(
+    action: bpy.types.Action | None, data_path: str, array_index: int
+) -> bpy.types.FCurve | None:
+    if action is None:
+        return None
+    for fc in action.fcurves:
+        if str(getattr(fc, "data_path", "") or "") == data_path and int(getattr(fc, "array_index", -1)) == array_index:
+            return fc
+    return None
+
+
+def _snapshot_live_base(
+    *,
+    scene: bpy.types.Scene,
+    cam_obj: bpy.types.Object,
+    frames: list[int],
+) -> dict:
+    base: dict[str, dict[str, object]] = {"loc": {}, "rot": {}, "ortho": {}}
+    obj_action = cam_obj.animation_data.action if cam_obj.animation_data else None
+    data_action = (
+        cam_obj.data.animation_data.action
+        if cam_obj.data and cam_obj.data.animation_data and cam_obj.data.animation_data.action
+        else None
+    )
+
+    for f in frames:
+        loc = [
+            float(_fcurve_by_path_index(obj_action, "location", i).evaluate(f)) if _fcurve_by_path_index(obj_action, "location", i) else float(cam_obj.location[i])
+            for i in range(3)
+        ]
+        rot = [
+            float(_fcurve_by_path_index(obj_action, "rotation_euler", i).evaluate(f)) if _fcurve_by_path_index(obj_action, "rotation_euler", i) else float(cam_obj.rotation_euler[i])
+            for i in range(3)
+        ]
+        ortho_fc = _fcurve_by_path_index(data_action, "ortho_scale", 0) if data_action else None
+        ortho = float(ortho_fc.evaluate(f)) if ortho_fc else float(getattr(cam_obj.data, "ortho_scale", 0.0))
+        base["loc"][str(int(f))] = loc
+        base["rot"][str(int(f))] = rot
+        base["ortho"][str(int(f))] = ortho
+
+    return base
+
+
+def _collect_routerig_keyframes(cam_obj: bpy.types.Object) -> list[int]:
+    frames: set[int] = set()
+    action = cam_obj.animation_data.action if cam_obj.animation_data else None
+    if action is None:
+        return []
+    for fc in action.fcurves:
+        dp = str(getattr(fc, "data_path", "") or "")
+        if dp not in ("location", "rotation_euler"):
+            continue
+        for kp in fc.keyframe_points:
+            try:
+                frames.add(int(round(float(kp.co.x))))
+            except Exception:
+                continue
+    return sorted(frames)
+
+
+def apply_live_orbit_ortho_preview(*, scene: bpy.types.Scene) -> None:
+    """
+    Apply orbit/ortho delta tweaks *non-destructively* to an already-keyed RouteRig camera.
+
+    - Uses a per-camera baseline snapshot so updates are reversible and not cumulative.
+    - Only modifies existing keyed frames (no key insertion).
+    - Intended to be called from property updates / UI (best-effort).
+    """
+    settings = getattr(scene, "routerig", None)
+    if settings is None:
+        return
+    if not bool(getattr(settings, "routerig_live_preview", True)):
+        return
+
+    cam_obj: bpy.types.Object | None = None
+    try:
+        if scene.camera and scene.camera.type == "CAMERA" and scene.camera.name.startswith("ROUTERIG_CAMERA"):
+            cam_obj = scene.camera
+    except Exception:
+        cam_obj = None
+    if cam_obj is None:
+        cam_obj = bpy.data.objects.get("ROUTERIG_CAMERA")
+    if cam_obj is None or cam_obj.type != "CAMERA":
+        return
+
+    frames = _collect_routerig_keyframes(cam_obj)
+    if not frames:
+        return
+
+    base_json = None
+    try:
+        base_json = cam_obj.get("_routerig_live_base_json", None)
+    except Exception:
+        base_json = None
+
+    base: dict
+    if isinstance(base_json, str) and base_json.strip():
+        try:
+            base = json.loads(base_json)
+        except Exception:
+            base = {}
+    else:
+        base = {}
+
+    if not (isinstance(base, dict) and base.get("loc") and base.get("rot") and base.get("ortho")):
+        base = _snapshot_live_base(scene=scene, cam_obj=cam_obj, frames=frames)
+        try:
+            cam_obj["_routerig_live_base_json"] = json.dumps(base)
+        except Exception:
+            pass
+
+    orbit_deg = float(getattr(settings, "routerig_orbit_deg", 0.0))
+    orbit_radius = float(getattr(settings, "routerig_orbit_radius", 0.0))
+    ortho_delta = float(getattr(settings, "routerig_ortho_delta", 0.0))
+
+    from .finders import find_object
+
+    car_obj = find_object("CAR_LEAD")
+    if car_obj is None:
+        return
+
+    obj_action = cam_obj.animation_data.action if cam_obj.animation_data else None
+    if obj_action is None:
+        return
+    data_action = (
+        cam_obj.data.animation_data.action
+        if cam_obj.data and cam_obj.data.animation_data and cam_obj.data.animation_data.action
+        else None
+    )
+
+    loc_fcs = [_fcurve_by_path_index(obj_action, "location", i) for i in range(3)]
+    rot_fcs = [_fcurve_by_path_index(obj_action, "rotation_euler", i) for i in range(3)]
+    ortho_fc = _fcurve_by_path_index(data_action, "ortho_scale", 0) if data_action else None
+
+    if any(fc is None for fc in loc_fcs) or any(fc is None for fc in rot_fcs):
+        return
+    if ortho_fc is None:
+        # No keyed ortho to modify; keep location/rotation preview, though.
+        pass
+
+    angle = _rad(orbit_deg)
+    c = math.cos(angle)
+    s = math.sin(angle)
+
+    prev_euler: Euler | None = None
+    frame_restore = int(scene.frame_current)
+
+    try:
+        for f in frames:
+            scene.frame_set(int(f))
+            car_pos = car_obj.matrix_world.translation.copy()
+
+            loc0 = Vector(base["loc"][str(int(f))])
+            rel = loc0 - car_pos
+            rel_xy = Vector((float(rel.x), float(rel.y), 0.0))
+            if rel_xy.length < 1e-6:
+                rel_xy = Vector((1.0, 0.0, 0.0))
+            rel_len = float(rel_xy.length)
+            rel_xy.normalize()
+
+            # Rotate around Z in the XY plane.
+            rel_xy_rot = Vector((rel_xy.x * c - rel_xy.y * s, rel_xy.x * s + rel_xy.y * c, 0.0))
+            new_len = max(1e-6, rel_len + float(orbit_radius))
+            new_loc = Vector((car_pos.x + rel_xy_rot.x * new_len, car_pos.y + rel_xy_rot.y * new_len, float(loc0.z)))
+
+            # Re-aim to the car (Euler).
+            forward = Vector((car_pos.x - new_loc.x, car_pos.y - new_loc.y, car_pos.z - new_loc.z))
+            if forward.length < 1e-6:
+                forward = Vector((0.0, 1.0, 0.0))
+            forward.normalize()
+            rot_m = _rotation_from_forward_up(forward, Vector((0.0, 0.0, 1.0)))
+            euler = rot_m.to_euler("XYZ")
+            euler = _ensure_euler_continuity(prev_euler, euler)
+            prev_euler = euler.copy()
+
+            # Ortho delta (reversible from baseline).
+            new_ortho = float(base["ortho"][str(int(f))]) + float(ortho_delta)
+            new_ortho = max(1e-6, new_ortho)
+
+            # Write keyed values at this frame.
+            for i in range(3):
+                kp = _find_kp_by_frame(loc_fcs[i], int(f))
+                if kp is not None:
+                    kp.co.y = float(new_loc[i])
+            for i in range(3):
+                kp = _find_kp_by_frame(rot_fcs[i], int(f))
+                if kp is not None:
+                    kp.co.y = float(euler[i])
+            if ortho_fc is not None:
+                kp = _find_kp_by_frame(ortho_fc, int(f))
+                if kp is not None:
+                    kp.co.y = float(new_ortho)
+
+        for fc in [*loc_fcs, *rot_fcs]:
+            try:
+                fc.update()
+            except Exception:
+                pass
+        if ortho_fc is not None:
+            try:
+                ortho_fc.update()
+            except Exception:
+                pass
+    finally:
+        try:
+            scene.frame_set(frame_restore)
+        except Exception:
+            pass
 
 
 def _iter_bbox_world_points(obj: bpy.types.Object):
@@ -737,16 +958,24 @@ def _filter_camera_path(states: list[CameraState], profile: dict, keyframes: lis
                 prev_state = state_map[prev_frame]
                 next_state = state_map[next_frame]
 
-                # Linear interpolation for location, slerp for rotation, linear for scale.
+                # Linear interpolation for location, Euler interpolation for rotation, linear for scale.
                 t = (f - prev_frame) / (next_frame - prev_frame)
                 interp_loc = prev_state.location.lerp(next_state.location, t)
-                interp_rot = prev_state.rotation_quaternion.slerp(next_state.rotation_quaternion, t)
+                e_next = _ensure_euler_continuity(prev_state.rotation_euler, next_state.rotation_euler)
+                interp_rot = Euler(
+                    (
+                        float(prev_state.rotation_euler.x + (e_next.x - prev_state.rotation_euler.x) * t),
+                        float(prev_state.rotation_euler.y + (e_next.y - prev_state.rotation_euler.y) * t),
+                        float(prev_state.rotation_euler.z + (e_next.z - prev_state.rotation_euler.z) * t),
+                    ),
+                    "XYZ",
+                )
                 interp_scale = (1 - t) * prev_state.ortho_scale + t * next_state.ortho_scale
 
                 interpolated_state = CameraState(
                     frame=f,
                     location=interp_loc,
-                    rotation_quaternion=interp_rot,
+                    rotation_euler=interp_rot,
                     ortho_scale=interp_scale,
                     focus_points_world=[] # Not interpolating these for now, may need more thought
                 )
@@ -759,19 +988,19 @@ def _filter_camera_path(states: list[CameraState], profile: dict, keyframes: lis
     # Ensure the states are sorted by frame after interpolation
     filtered_states.sort(key=lambda s: s.frame)
 
-    # Re-apply continuity to interpolated quaternions
+    # Re-apply continuity to interpolated Eulers
     final_smoothed_states: list[CameraState] = []
-    prev_quat_smoothed: Quaternion | None = None
+    prev_euler_smoothed: Euler | None = None
     for state in filtered_states:
-        q_curr_smoothed = _ensure_quat_continuity(prev_quat_smoothed, state.rotation_quaternion)
+        e_curr_smoothed = _ensure_euler_continuity(prev_euler_smoothed, state.rotation_euler)
         final_smoothed_states.append(CameraState(
             frame=state.frame,
             location=state.location,
-            rotation_quaternion=q_curr_smoothed,
+            rotation_euler=e_curr_smoothed,
             ortho_scale=state.ortho_scale,
             focus_points_world=state.focus_points_world # Keep original focus points
         ))
-        prev_quat_smoothed = q_curr_smoothed
+        prev_euler_smoothed = e_curr_smoothed
 
     return final_smoothed_states
 
@@ -882,6 +1111,280 @@ def _apply_bezier_auto_handles(*, cam_obj: bpy.types.Object, active_end: int, bu
         _tune_action(dad.action)
 
 
+def _jitter_profile(*, profile: dict, seed: int, variance: float) -> dict:
+    if seed == 0 or float(variance) <= 0.0:
+        return profile
+    variance = max(0.0, min(1.0, float(variance)))
+    rng = random.Random(int(seed))
+    out = copy.deepcopy(profile)
+
+    comp = out.get("composition")
+    if not isinstance(comp, dict):
+        comp = {}
+        out["composition"] = comp
+
+    # Jitter desired screen placement keys (nx/ny) for car/start/end.
+    desired = comp.get("desired_screen_keys")
+    if isinstance(desired, dict):
+        for anchor in ("car", "start", "end"):
+            keys = desired.get(anchor)
+            if not isinstance(keys, list):
+                continue
+            for k in keys:
+                if not isinstance(k, dict):
+                    continue
+                if "nx" in k:
+                    nx = float(k.get("nx", 0.0)) + rng.uniform(-1.0, 1.0) * variance * 0.003
+                    k["nx"] = max(-0.95, min(0.95, nx))
+                if "ny" in k:
+                    ny = float(k.get("ny", 0.0)) + rng.uniform(-1.0, 1.0) * variance * 0.003
+                    k["ny"] = max(-0.95, min(0.95, ny))
+
+    # Jitter target weights keys, then renormalize to sum=1.
+    tw_keys = comp.get("target_weights_keys")
+    if isinstance(tw_keys, list):
+        for k in tw_keys:
+            if not isinstance(k, dict):
+                continue
+            s0 = float(k.get("start", 0.0))
+            c0 = float(k.get("car", 1.0))
+            e0 = float(k.get("end", 0.0))
+            s = max(0.0, min(1.0, s0 + rng.uniform(-1.0, 1.0) * variance * 0.05))
+            c = max(0.0, min(1.0, c0 + rng.uniform(-1.0, 1.0) * variance * 0.05))
+            e = max(0.0, min(1.0, e0 + rng.uniform(-1.0, 1.0) * variance * 0.05))
+            tot = s + c + e
+            if tot < 1e-6:
+                tot0 = s0 + c0 + e0
+                if tot0 < 1e-6:
+                    s, c, e = 0.0, 1.0, 0.0
+                else:
+                    s, c, e = s0 / tot0, c0 / tot0, e0 / tot0
+                tot = s + c + e
+            k["start"] = s / tot
+            k["car"] = c / tot
+            k["end"] = e / tot
+
+    return out
+
+
+def _apply_orbit_and_ortho_delta(
+    *,
+    states: list[CameraState],
+    car_obj: bpy.types.Object,
+    scene: bpy.types.Scene,
+    depsgraph: bpy.types.Depsgraph,
+    orbit_deg: float,
+    orbit_radius: float,
+    ortho_delta: float,
+    keys_only: bool,
+    keyframes: list[int],
+) -> list[CameraState]:
+    """Apply orbit nudge and ortho delta; defaults are no-op."""
+    if (
+        abs(orbit_deg) < 1e-6
+        and abs(orbit_radius) < 1e-6
+        and abs(ortho_delta) < 1e-6
+    ):
+        return states
+
+    key_set = set(int(k) for k in keyframes) if keys_only else None
+    angle = _rad(orbit_deg)
+
+    adjusted: list[CameraState] = []
+    prev_euler: Euler | None = None
+    for state in states:
+        if key_set is not None and state.frame not in key_set:
+            adjusted.append(state)
+            prev_euler = state.rotation_euler
+            continue
+
+        scene.frame_set(state.frame)
+        depsgraph.update()
+        car_pos = car_obj.evaluated_get(depsgraph).matrix_world.to_translation().copy()
+
+        rel = state.location - car_pos
+        rel_xy = Vector((rel.x, rel.y, 0.0))
+        if rel_xy.length < 1e-6:
+            rel_xy = Vector((1.0, 0.0, 0.0))
+        base_len = rel_xy.length
+        rel_xy = rel_xy.normalized() * max(1e-3, base_len + orbit_radius)
+        rel_xy.rotate(Matrix.Rotation(angle, 3, "Z"))
+
+        new_loc = Vector((car_pos.x + rel_xy.x, car_pos.y + rel_xy.y, state.location.z))
+
+        forward = (car_pos - new_loc).normalized()
+        if forward.length < 1e-6:
+            forward = Vector((0.0, 1.0, 0.0))
+        new_rot_m = _rotation_from_forward_up(forward, Vector((0.0, 0.0, 1.0)))
+        new_euler = new_rot_m.to_euler("XYZ")
+        new_euler = _ensure_euler_continuity(prev_euler, new_euler)
+        prev_euler = new_euler
+        new_ortho = max(1e-6, state.ortho_scale + ortho_delta)
+
+        adjusted.append(
+            CameraState(
+                frame=state.frame,
+                location=new_loc,
+                rotation_euler=new_euler,
+                ortho_scale=new_ortho,
+                focus_points_world=[p.copy() for p in state.focus_points_world],
+            )
+        )
+
+    return adjusted
+
+
+def _adjust_end_pose_for_visibility(
+    *,
+    states: list[CameraState],
+    car_obj: bpy.types.Object,
+    scene: bpy.types.Scene,
+    depsgraph: bpy.types.Depsgraph,
+    bvh: BVHTree | None,
+    profile: dict,
+    active_end: int,
+    blend_window: int,
+) -> list[CameraState]:
+    cfg = profile.get("collision", {}) if isinstance(profile, dict) else {}
+    step = float(cfg.get("push_step", 1.0))
+    push_order = cfg.get("push_order", ["+Z", "-V", "+RIGHT", "-RIGHT", "+UP", "-UP"])
+    max_iter = int(cfg.get("end_pose_visibility_max_iter", cfg.get("max_push_iterations", 30)))
+    max_dist = float(cfg.get("end_pose_visibility_max_dist", 25.0))
+
+    if bvh is None or step <= 0.0 or max_iter <= 0 or max_dist <= 0.0:
+        return states
+
+    end_state = next((s for s in states if int(s.frame) == int(active_end)), None)
+    if end_state is None:
+        return states
+
+    scene.frame_set(int(active_end))
+    depsgraph.update()
+    car_pos = car_obj.evaluated_get(depsgraph).matrix_world.to_translation().copy()
+
+    def is_occluded(cam_loc: Vector) -> bool:
+        v = car_pos - cam_loc
+        dist = float(v.length)
+        if dist < 1e-6:
+            return False
+        direction = v.normalized()
+        hit_loc, hit_norm, hit_index, hit_dist = bvh.ray_cast(cam_loc, direction, dist)
+        if hit_loc is None:
+            return False
+        return float(hit_dist) < dist - 1e-3
+
+    if not is_occluded(end_state.location):
+        return states
+
+    cam_loc = end_state.location.copy()
+    cam_rot = end_state.rotation_euler.to_matrix()
+    back = cam_rot.col[2].to_3d().normalized()
+    forward = (-back).normalized()
+    right = cam_rot.col[0].to_3d().normalized()
+    up = cam_rot.col[1].to_3d().normalized()
+
+    def dir_from_token(tok: str) -> Vector | None:
+        t = str(tok).strip().upper()
+        if t == "+Z":
+            return Vector((0.0, 0.0, 1.0))
+        if t == "-Z":
+            return Vector((0.0, 0.0, -1.0))
+        if t == "+V":
+            return forward
+        if t == "-V":
+            return -forward
+        if t == "+RIGHT":
+            return right
+        if t == "-RIGHT":
+            return -right
+        if t == "+UP":
+            return up
+        if t == "-UP":
+            return -up
+        return None
+
+    moved = 0.0
+    cleared = False
+    # Push order search: try each direction for multiple steps before moving on.
+    for tok in push_order:
+        d = dir_from_token(tok)
+        if d is None:
+            continue
+        for _ in range(max_iter):
+            if not is_occluded(cam_loc):
+                cleared = True
+                break
+            cam_loc = cam_loc + d * step
+            moved += float(step)
+            if moved >= max_dist:
+                break
+        if cleared or moved >= max_dist:
+            break
+
+    if not cleared:
+        return states
+
+    # Ensure we didn't end inside buildings and keep ortho scale stable.
+    try:
+        cam_loc, _ = _push_out_from_buildings(
+            cam_loc=cam_loc,
+            forward=forward,
+            cam_rot=cam_rot,
+            ortho_scale=float(end_state.ortho_scale),
+            bvh=bvh,
+            profile=profile,
+        )
+    except Exception:
+        pass
+
+    forward2 = (car_pos - cam_loc).normalized()
+    if forward2.length < 1e-6:
+        forward2 = forward
+    end_euler = _rotation_from_forward_up(forward2, Vector((0.0, 0.0, 1.0))).to_euler("XYZ")
+    end_euler = _ensure_euler_continuity(end_state.rotation_euler, end_euler)
+
+    # Blend final window into adjusted end pose to avoid pops.
+    start_blend = max(1, int(active_end) - max(1, int(blend_window)))
+    adjusted: list[CameraState] = []
+    for s in states:
+        if start_blend <= int(s.frame) <= int(active_end):
+            t = (float(s.frame) - float(start_blend)) / max(1.0, float(active_end - start_blend))
+            loc = s.location.lerp(cam_loc, t)
+            e_end = _ensure_euler_continuity(s.rotation_euler, end_euler)
+            eul = Euler(
+                (
+                    float(s.rotation_euler.x + (e_end.x - s.rotation_euler.x) * t),
+                    float(s.rotation_euler.y + (e_end.y - s.rotation_euler.y) * t),
+                    float(s.rotation_euler.z + (e_end.z - s.rotation_euler.z) * t),
+                ),
+                "XYZ",
+            )
+            ortho = s.ortho_scale
+            adjusted.append(
+                CameraState(
+                    frame=s.frame,
+                    location=loc,
+                    rotation_euler=eul,
+                    ortho_scale=ortho,
+                    focus_points_world=[p.copy() for p in s.focus_points_world],
+                )
+            )
+        elif int(s.frame) == int(active_end):
+            adjusted.append(
+                CameraState(
+                    frame=s.frame,
+                    location=cam_loc.copy(),
+                    rotation_euler=end_euler.copy(),
+                    ortho_scale=s.ortho_scale,
+                    focus_points_world=[p.copy() for p in s.focus_points_world],
+                )
+            )
+        else:
+            adjusted.append(s)
+
+    return adjusted
+
+
 def generate_camera_animation(
     *,
     scene: bpy.types.Scene,
@@ -907,6 +1410,12 @@ def generate_camera_animation(
     active_end = _resolve_camera_active_end(scene=scene, profile=profile)
     frame_total = active_end  # use active_end; hold_last handled by constant interp
     ks = _effective_keyframes(scene=scene, profile=profile, keyframes_override=keyframes, active_end=active_end)
+
+    settings = getattr(scene, "routerig", None)
+    seed = int(getattr(settings, "routerig_seed", 0)) if settings else 0
+    variance = float(getattr(settings, "routerig_variance", 0.0)) if settings else 0.0
+    if seed != 0 and variance > 0.0:
+        profile = _jitter_profile(profile=profile, seed=seed, variance=variance)
 
     # Filter out problematic keyframe 131 from calculation if it exists in the input list
     # The _filter_camera_path function will handle interpolation for it later if it's in the profile
@@ -949,11 +1458,16 @@ def generate_camera_animation(
     depsgraph = bpy.context.evaluated_depsgraph_get()
     hold_cache: dict[str, object] | None = None
 
+    try:
+        depsgraph.update()
+    except Exception:
+        pass
+
     buildings_collection_name = str(profile.get("collision", {}).get("buildings_collection_name", "ASSET_BUILDINGS"))
     buildings_col = find_collection(buildings_collection_name) if buildings_collection_name else None
     bvh = _build_world_bvh(buildings_col, depsgraph) if buildings_col else None
 
-    prev_quat: Quaternion | None = None
+    prev_euler_calc: Euler | None = None
     calculated_states: list[CameraState] = []
 
     for f in ks:
@@ -963,7 +1477,7 @@ def generate_camera_animation(
             current_state = CameraState(
                 frame=f,
                 location=hold_cache["loc"].copy(),
-                rotation_quaternion=hold_cache["quat"].copy(),
+                rotation_euler=hold_cache["euler"].copy(),
                 ortho_scale=hold_cache["ortho"],
                 focus_points_world=[p.copy() for p in hold_cache["focus_points_world"]],
             )
@@ -1083,10 +1597,10 @@ def generate_camera_animation(
         forward = _forward_from_yaw_pitch(yaw_deg=yaw, pitch_deg=pitch)
         rot = _rotation_from_forward_up(forward, Vector((0.0, 0.0, 1.0)))
 
-        # Target is weighted blend of anchors.
-        active_end = int(profile.get("timeline", {}).get("frame_active_end", scene.frame_end))
+        # Target is weighted blend of anchors (respect the resolved active_end).
+        end_focus_active_end = int(active_end)
         end_focus_window = int(profile.get("composition", {}).get("end_focus_window_frames", 40))
-        end_focus_start = max(1, active_end - max(0, end_focus_window))
+        end_focus_start = max(1, end_focus_active_end - max(0, end_focus_window))
 
         # End framing rule: in the final window, center on the car and control ortho scale by car size,
         # not by route/end marker composition.
@@ -1195,15 +1709,14 @@ def generate_camera_animation(
                 profile=profile,
             )
         
-        # Ensure quaternion continuity to avoid "long way" spins.
-        q_curr = rot.to_quaternion()
-        q_curr = _ensure_quat_continuity(prev_quat, q_curr)
-        prev_quat = q_curr
+        e_curr = rot.to_euler("XYZ")
+        e_curr = _ensure_euler_continuity(prev_euler_calc, e_curr)
+        prev_euler_calc = e_curr
 
         current_state = CameraState(
             frame=f,
             location=cam_loc.copy(),
-            rotation_quaternion=q_curr.copy(),
+            rotation_euler=e_curr.copy(),
             ortho_scale=ortho_scale,
             focus_points_world=[p.copy() for p in focus_points] # Store copies
         )
@@ -1212,20 +1725,52 @@ def generate_camera_animation(
         if buffer_mode == "hold_last" and f == active_end:
             hold_cache = {
                 "loc": cam_loc.copy(),
-                "quat": q_curr.copy(),
+                "euler": e_curr.copy(),
                 "ortho": float(ortho_scale),
                 "focus_points_world": [p.copy() for p in focus_points] # Store copies
             }
-    
+
     smoothed_states = _filter_camera_path(calculated_states, profile, keyframes=ks)
+
+    # Feature 2: optional end-pose visibility solver (defaults off).
+    end_vis = bool(getattr(settings, "routerig_endpose_visibility", False)) if settings else False
+    if end_vis:
+        blend_window = int(getattr(settings, "routerig_endpose_blend_window", 8)) if settings else 8
+        smoothed_states = _adjust_end_pose_for_visibility(
+            states=smoothed_states,
+            car_obj=car_obj,
+            scene=scene,
+            depsgraph=depsgraph,
+            bvh=bvh,
+            profile=profile,
+            active_end=active_end,
+            blend_window=blend_window,
+        )
+
+    # Feature 3: orbit nudge + ortho-scale delta (defaults no-op).
+    orbit_deg = float(getattr(settings, "routerig_orbit_deg", 0.0)) if settings else 0.0
+    orbit_radius = float(getattr(settings, "routerig_orbit_radius", 0.0)) if settings else 0.0
+    keys_only = bool(getattr(settings, "routerig_orbit_apply_to_keys_only", True)) if settings else True
+    ortho_delta = float(getattr(settings, "routerig_ortho_delta", 0.0)) if settings else 0.0
+
+    smoothed_states = _apply_orbit_and_ortho_delta(
+        states=smoothed_states,
+        car_obj=car_obj,
+        scene=scene,
+        depsgraph=depsgraph,
+        orbit_deg=orbit_deg,
+        orbit_radius=orbit_radius,
+        ortho_delta=ortho_delta,
+        keys_only=keys_only,
+        keyframes=ks,
+    )
 
     # --- Keyframe insertion phase ---
     prev_euler: Euler | None = None
     for state in smoothed_states:
         scene.frame_set(state.frame)
         cam_obj.location = state.location
-        e = state.rotation_quaternion.to_euler("XYZ")
-        e = _ensure_euler_continuity(prev_euler, e)
+        e = _ensure_euler_continuity(prev_euler, state.rotation_euler)
         prev_euler = e.copy()
         cam_obj.rotation_euler = e
         cam_obj.data.ortho_scale = state.ortho_scale
